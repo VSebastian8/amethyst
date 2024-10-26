@@ -1,0 +1,7 @@
+[package]
+name = "amethyst"
+version = "0.1.0"
+edition = "2021"
+authors = ["VSebastian8"]
+
+[dependencies]
