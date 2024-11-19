@@ -7,3 +7,5 @@
 - ghc (for Haskell)
 - gcc (for C)
 - cargo (for Rust)
+
+For more information on the syntax, check out [SyntaxExamples](src/SyntaxExamples.hs)
