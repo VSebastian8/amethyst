@@ -70,6 +70,10 @@ notNull (Parser p) = Parser $ \input -> do
 ws :: Parser String
 ws = spanP (\c -> c == ' ' || c == '\n')
 
+-- At least one white space
+ws2 :: Parser String 
+ws2 = notNull ws
+
 wordP :: Parser String
 wordP = spanP (`elem` allowedNameSymbols)
 
@@ -89,3 +93,23 @@ transitionP = Transition
         <*> (ws *> symbolP <* ws <* charP ',')
         <*> (ws *> moveP <* ws <* stringP "->")
         <*> (ws *> wordP <* ws <* charP ';')
+
+stateP :: Parser State
+stateP = (Reject <$> rejectP) 
+     <|> (Accept <$> acceptP) 
+     <|> ((makeState True) <$> initialP <*> trP)
+     <|> ((makeState False) <$> normalP <*> trP)
+    where
+        rejectP  =  ws *> stringP "reject" *> ws2 
+                    *> stringP "state" *> ws2 
+                    *> wordP <* ws <* charP ';'
+        acceptP  =  ws *> stringP "accept" *> ws2 
+                    *> stringP "state" *> ws2 
+                    *> wordP <* ws <* charP ';'
+        initialP =  ws *> stringP "initial" *> ws2 
+                    *> stringP "state" *> ws2 
+                    *> wordP <* ws
+        normalP  =  ws *> stringP "state" <* ws
+        trP = charP '{' *> some transitionP <* ws <* charP '}'
+        makeState :: Bool -> String -> [Transition] -> State
+        makeState initial name transitions = State name transitions initial
