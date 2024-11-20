@@ -30,8 +30,8 @@ data MacroKeyword = Complement String
 -- Turing Machines
 data Automata = Machine { 
                     getAutomataName :: String, 
-                    getStates :: [State], 
-                    getComponents :: [(String, String)] }
+                    getComponents :: [(String, String)],
+                    getStates :: [State] }
               | Macro { 
                     getAutomataName :: String, 
                     getKeyword :: MacroKeyword }
@@ -71,16 +71,17 @@ stateP = (Reject <$> rejectP)
      <|> ((makeState True) <$> initialP <*> trP)
      <|> ((makeState False) <$> normalP <*> trP)
     where
-        rejectP  =  ws *> stringP "reject" *> ws2 
+        rejectP  =  stringP "reject" *> ws2 
                     *> stringP "state" *> ws2 
                     *> wordP <* ws <* charP ';'
-        acceptP  =  ws *> stringP "accept" *> ws2 
+        acceptP  =  stringP "accept" *> ws2 
                     *> stringP "state" *> ws2 
                     *> wordP <* ws <* charP ';'
-        initialP =  ws *> stringP "initial" *> ws2 
+        initialP =  stringP "initial" *> ws2 
                     *> stringP "state" *> ws2 
                     *> wordP <* ws
-        normalP  =  ws *> stringP "state" <* ws
+        normalP  =  stringP "state" *> ws 
+                    *> wordP <* ws
         trP = charP '{' *> some transitionP <* ws <* charP '}'
         makeState :: Bool -> String -> [Transition] -> State
         makeState initial name transitions = State name transitions initial
@@ -137,3 +138,19 @@ macroP = Macro
     <$> (stringP "automata" *> ws2 *> wordP <* ws <* charP '=' <* ws)
     <*> (complementP <|> intersectP <|> reunionP <|> chainP <|> repeatP
         <|> moveMP <|> overrideP <|> placeP <|> shiftP) <* ws <* charP ';'
+
+machineP :: Parser Automata
+machineP = Machine
+    <$> (stringP "automata" *> ws2 *> wordP <* ws)
+    <*> (charP '(' *> sepBy comma pair <* charP ')' <* ws)
+    <*> (charP '{' *> some (ws *> stateP <* ws) <* charP '}')
+    where 
+        comma = ws *> charP ',' <* ws
+        pair :: Parser (String, String)
+        pair = (\s1 s2 -> (s1, s2)) <$> wordP <*> (ws2 *> wordP)
+
+automataP :: Parser Automata
+automataP = macroP <|> machineP
+
+programP :: Parser Program
+programP = Program <$> many (ws *> automataP <* ws)

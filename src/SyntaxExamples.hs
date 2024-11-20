@@ -28,8 +28,46 @@ macro8 = "automata rescriere = override(L, 5, 'V');"
 macro9 = "automata scriere = place(\"ABCDE\");"
 macro10 = "automata insert8 = shift(R, 8);"
 macro11= "automata delete9 = shift(L, 8);"
+{- Maybe macros:
 
+automata goto_marker = find(R, 'X');
+automata memcpy = copy(R, 8, 40); -- urmatoarele 8 pozitii vor fi copiate peste 40 de casute la dreapta
+automata luck = random(q0, q1, q2, 2, 3, 4); -- state names and weights, this only if we have non-determinism
+-}
 
+-- Automata examples
+-- runParser automataP auto1
+auto1 = "automata or(){initial state q0 {0 / 0, R -> q0; 1 / 1 , R -> q1; _ / _ , N -> f;} state q1 {0 / 1 , R -> q1; 1 / 1 , N -> q1; _ / _, N -> f;} accept state f;}"
+auto2 = "automata even(){\ 
+\   initial state even {\
+\      0 / 0, R -> even;\
+\      1 / 1, R -> odd;\
+\      B / B, N -> true;\
+\   }\
+\   state odd{\ 
+\       0 / 0, R -> odd;\
+\       1 / 1, R -> even;\
+\       _ / _, N -> false;\
+\   }\
+\   accept state true;\
+\   reject state false;\
+\}"
+auto3 = "automata two_even(even first, even second) {\
+\       initial state q0{\
+\           B / B, R -> first.even;\
+\           _ / _, N -> first.even;\
+\       }\
+\       state first.true{\
+\           _ / _, R -> second.even;\
+\       }\
+\       state first.false {_ / _, N -> false;}\
+\       state second.true {_ / _, N -> true;}\
+\       state second.false {_ / _, N -> false;}\
+\       accept state true;\
+\       reject state false;\
+\}"
+
+-- A program is just a list of automatas (explicit machines and macros)
 program1 = " \
 \   automata not(){    \
 \       initial state q0 {     \
@@ -40,7 +78,8 @@ program1 = " \
 \       accept state q1;    \
 \   }   \
 \   \
-\   automata main (not n1, not n2) {    \
+\   automata three = repeat(3, not);\
+\   automata main (not n1, three n2) {    \
 \       initial state q0 {      \
 \           B/B,N-> n1.q0; _/B,R->qrej;     \
 \       }   \
@@ -55,7 +94,7 @@ program1 = " \
 {- Syntax Tree:
 
 Program [
-    Automata "not" [
+    Machine "not" [] [
         State "q0" [
             Transition 'B' 'B' R "q0",
             Transition '1' '0' L "q1",
@@ -63,9 +102,11 @@ Program [
             ] 
             True, 
         Accept "q1"
-        ] 
-        [],
-    Automata "main" [
+        ] ,
+    Macro "three" (Repeat 3 "not"),
+    Machine "main" 
+        [("n1", "not"), ("n2", "not")]
+        [
         State "q0" [
             Transition 'B' 'B' N "n1.q0",
             Transition '_' 'B' R "qrej"
@@ -76,16 +117,5 @@ Program [
         Reject "qrej",
         Accept "qacc"
         ]
-        [("n1", "not"), ("n2", "not")]
 ]
--}
-
-{- Macros examples
-
-
-
-Maybe:
-automata goto_marker = find(R, 'X');
-automata memcpy = copy(R, 8, 40); -- urmatoarele 8 pozitii vor fi copiate peste 40 de casute la dreapta
-
 -}
