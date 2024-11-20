@@ -1,15 +1,34 @@
 module SyntaxExamples where
 
+-- Transition Examples 
+-- runParser transitionP transition1
 transition1 = " A / B , R -> qstare ;  "
 transition2 = "X/_,N->q2;"
 transition3 = "Y/,,L->q3" -- error invalid character and missing ;
 transition4 = "AB/CD , R -> q41;" -- error expected character, not string
 transition5 = "B/B,C -> q" -- error C is not a valid move
 
+-- State Examples
+-- runParser stateP state1
 state1 = "initial state nume{ B / B, L -> nume; }"
 state2 = "accept state okk;"
 state3 = "reject state nu_ok;"
 state4 = "state renume {A/A,N->nume;H/B,R->renume;}"
+
+-- Macro Examples
+-- runParser macroP macro1
+macro1 = "automata comp = complement(and);"
+macro2 = "automata int = intersect(not, not, not);"
+macro3 = "automata ren = reunion(and, or);"
+macro4 = "automata lant = chain(not, or, move2l);" 
+macro5= "automata repetare = repeat(5, not);"
+macro6 = "automata move8r = move(R, 8);"
+macro7 = "automata move2l = move(L, 2);"
+macro8 = "automata rescriere = override(L, 5, 'V');"
+macro9 = "automata scriere = place(\"ABCDE\");"
+macro10 = "automata insert8 = shift(R, 8);"
+macro11= "automata delete9 = shift(L, 8);"
+
 
 program1 = " \
 \   automata not(){    \
@@ -63,17 +82,7 @@ Program [
 
 {- Macros examples
 
-automata comp = complement(and);
-automata nou = intersect(not, not, not);
-automata vechi = reunion(and, or);
-automata move8r = move(R, 8);
-automata move2l = move(L, 2);
-automata rescriere = override(L, 5, 'V');
-automata scriere = place("abcde"); -- override la dreapta cu un sir de caractere
-automata lant = chain(not, or, move2l);
-automata insert8 = shift(R, 8);
-automata delete9 = shift(L, 8);
-automata repetare = repeat(5, not); -- echivalent cu chain(not, not, not, not, not);
+
 
 Maybe:
 automata goto_marker = find(R, 'X');

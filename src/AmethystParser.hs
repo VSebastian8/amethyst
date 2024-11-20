@@ -1,10 +1,13 @@
 module AmethystParser where
 
-import Control.Applicative
+import BasicParser
 import SyntaxExamples
+
+import Control.Applicative
 
 -- Syntax
 
+-- Basic types
 data Move = L | R | N
     deriving Show
 data Transition = Transition { getReadSymbol :: Char, getWriteSymbol :: Char, getMove :: Move, getNewState :: String }
@@ -13,69 +16,37 @@ data State = Accept { getStateName :: String }
            | Reject { getStateName :: String }
            | State  { getStateName :: String, getTransitions :: [Transition], getInitial :: Bool }
     deriving Show
-data Automata = Automata { getAutomataName :: String, getStates :: [State], getComponents :: [(String, String)] }
+-- Macro Types
+data MacroKeyword = Complement String
+                  | Intersect [String] 
+                  | Reunion [String] 
+                  | Chain [String]
+                  | Repeat Int String
+                  | Move Move Int 
+                  | Override Move Int Char
+                  | Place String
+                  | Shift Move Int
     deriving Show
-data Program = Program { getAutomata :: [Automata] }
+-- Turing Machines
+data Automata = Machine { 
+                    getAutomataName :: String, 
+                    getStates :: [State], 
+                    getComponents :: [(String, String)] }
+              | Macro { 
+                    getAutomataName :: String, 
+                    getKeyword :: MacroKeyword }
+    deriving Show
+newtype Program = Program { getAutomata :: [Automata] }
     deriving Show
 
 allowedNameSymbols = ['a'..'z'] ++ "0123456789_."
 allowedTapeSymbols = ['A'..'Z'] ++ "0123456789" ++ "!@#$%^&*()-+=/?_:"
 
--- Parser instances
-
-newtype Parser a = Parser {runParser :: String -> Maybe (String, a)}
-
-instance Functor Parser where
-    fmap f (Parser p) = Parser (\input -> do
-                        (input', x) <- p input
-                        Just (input', f x))
-
-instance Applicative Parser where
-    pure x = Parser $ \input -> Just (input, x)
-    (Parser p1) <*> (Parser p2) = Parser $ \input -> do
-                        (input1, f) <- p1 input
-                        (input2, x) <- p2 input1
-                        Just (input2, f x)
-
-instance Alternative Parser where
-    empty = Parser $ \_ -> Nothing
-    (Parser p1) <|> (Parser p2) = Parser $ \input -> do
-                        p1 input <|> p2 input
-
--- Parser combinators
-
-charP :: Char -> Parser Char
-charP x = Parser f
-    where
-        f [] = Nothing
-        f (y:ys)
-            |y == x = Just (ys, x)
-            |otherwise = Nothing
-
-stringP :: String -> Parser String
-stringP = sequenceA . map charP
-
-spanP :: (Char -> Bool) -> Parser String
-spanP f = Parser $ \input -> 
-    let (token, rest) = span f input
-    in Just (rest, token)
-
-notNull :: Parser [a] -> Parser [a]
-notNull (Parser p) = Parser $ \input -> do
-                (input', xs) <- p input
-                if null xs 
-                    then Nothing
-                    else Just (input', xs)
-
-ws :: Parser String
-ws = spanP (\c -> c == ' ' || c == '\n')
-
--- At least one white space
-ws2 :: Parser String 
-ws2 = notNull ws
-
 wordP :: Parser String
 wordP = spanP (`elem` allowedNameSymbols)
+
+tapeP :: Parser String
+tapeP = spanP (`elem` allowedTapeSymbols)
 
 symbolP :: Parser Char
 symbolP = foldr1 (<|>) $ map charP allowedTapeSymbols
@@ -113,3 +84,56 @@ stateP = (Reject <$> rejectP)
         trP = charP '{' *> some transitionP <* ws <* charP '}'
         makeState :: Bool -> String -> [Transition] -> State
         makeState initial name transitions = State name transitions initial
+
+-- Macro Parsers
+complementP :: Parser MacroKeyword
+complementP = Complement 
+    <$> (stringP "complement" *> ws *> charP '(' *> ws 
+         *> wordP <* ws <* charP ')')
+
+intersectP :: Parser MacroKeyword
+intersectP = Intersect 
+    <$> (stringP "intersect" *> ws *> charP '(' *> ws *>
+         sepBy (ws *> charP ',' <* ws) wordP <* ws <* charP ')')
+
+reunionP :: Parser MacroKeyword
+reunionP = Reunion 
+    <$> (stringP "reunion" *> ws *> charP '(' *> ws *>
+         sepBy (ws *> charP ',' <* ws) wordP <* ws <* charP ')')
+
+chainP :: Parser MacroKeyword
+chainP = Chain 
+    <$> (stringP "chain" *> ws *> charP '(' *> ws *>
+         sepBy (ws *> charP ',' <* ws) wordP <* ws <* charP ')')
+
+repeatP :: Parser MacroKeyword
+repeatP = Repeat 
+    <$> (stringP "repeat" *> ws *> charP '(' *> ws *> numberP <* ws) 
+    <*> (charP ',' *> ws *> wordP <* ws <* charP ')')
+
+moveMP :: Parser MacroKeyword
+moveMP = Move 
+    <$> (stringP "move" *> ws *> charP '(' *> ws *> moveP <* ws) 
+    <*> (charP ',' *> ws *> numberP <* ws <* charP ')')
+
+overrideP :: Parser MacroKeyword
+overrideP = Override
+    <$> (stringP "override" *> ws *> charP '(' *> ws *> moveP <* ws)
+    <*> (charP ',' *> ws *> numberP <* ws <* charP ',' <* ws)
+    <*> (charP '\'' *> symbolP <* charP '\''  <* ws <* charP ')')
+
+placeP :: Parser MacroKeyword
+placeP = Place 
+    <$> (stringP "place" *> ws *> charP '(' *> ws *>
+         charP '"' *> tapeP <* charP '"' <* ws <* charP ')')
+
+shiftP :: Parser MacroKeyword
+shiftP = Shift
+    <$> (stringP "shift" *> ws *> charP '(' *> ws *> moveP <* ws)
+    <*> (charP ',' *> ws *> numberP <* ws <* charP ')')
+
+macroP :: Parser Automata
+macroP = Macro 
+    <$> (stringP "automata" *> ws2 *> wordP <* ws <* charP '=' <* ws)
+    <*> (complementP <|> intersectP <|> reunionP <|> chainP <|> repeatP
+        <|> moveMP <|> overrideP <|> placeP <|> shiftP) <* ws <* charP ';'
