@@ -71,7 +71,7 @@ auto3 = "automata two_even(even first, even second) {\
 program1 = " \
 \   automata not(){    \
 \       initial state q0 {     \
-\           B / B , R -> q0;   \
+\           @ / @ , R -> q0;   \
 \           1 / 0 , L -> q1;   \
 \           0 / 1 , L -> q1;   \
 \       }   \
