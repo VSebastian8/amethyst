@@ -6,6 +6,9 @@ import AmethystSyntax
 newtype Error = Error {getErr :: String}
 newtype Parser a = Parser {runParser :: String -> Maybe (String, Either Error a)}
 
+instance Show Error where
+    show (Error e) = "Error: " ++ e 
+
 -- Parser instances
 instance Functor Parser where
     fmap f (Parser p) = Parser $ \input -> do
@@ -97,7 +100,7 @@ moveP = (\_ -> L) <$> charP 'L'
 -- If the PE parsers don't succed, they return an error
 look :: String -> (String, Error)
 look [] = ("", Error "no more input")
-look (y:ys) = (ys, Error $ "found '" ++ [y] ++ "'")
+look (y:ys) = (ys, Error $ "'" ++ [y] ++ "'")
 
 lookLit :: String -> (String, Error)
 lookLit [] = ("", Error "")
@@ -107,35 +110,94 @@ lookLit (y:ys) = if and $ map ($y) [not . (`elem` "(){};= \n"), (`elem` allowedN
     else (y:ys, Error "")
 
 makeError :: String -> (String, Error) -> (String, Either Error b)
-makeError err (leftover, Error cause) = (leftover, Left $ Error $ err ++ " - " ++ cause)
+makeError err (leftover, Error cause) = (leftover, Left $ Error $ err ++ cause)
 
 charPE :: Char -> Parser Char
-charPE x = charP x <|> (Parser $ Just . makeError ("Error: Expected '" ++ [x] ++ "'") . look )
+charPE x = charP x 
+    <|> (Parser $ Just . makeError ("expected '" ++ [x] ++ "' - found ") . look )
 
 movePE :: Parser Move
-movePE = moveP <|> (Parser $ Just . makeError "Error: Expected move symbol" . look)
+movePE = moveP 
+    <|> (Parser $ Just . makeError "expected move symbol - found " . look)
 
-symbolPE :: Parser Char
-symbolPE = symbolP <|> (Parser $ Just . makeError "Error: Expected tape symbol" . look)
-
-wordPE :: Parser String
-wordPE = (condition (all (`elem` allowedNameSymbols)) literalP) <|> (Parser $ Just . makeError "Error: Forbidden symbol in word: " . lookLit)
-
-tapePE :: Parser String
-tapePE = (condition (all (`elem` allowedTapeSymbols)) literalP) <|> (Parser $ Just . makeError "Error: Forbidden tape in sequence: " . lookLit)
-
-notNullE :: Parser [a] -> Parser [a]
-notNullE (Parser p) = Parser $ \input -> do
+notNullE :: String -> Parser [a] -> Parser [a]
+notNullE msg (Parser p) = Parser $ \input -> do
                 (input', res) <- p input
                 case res of 
-                    Left err -> Just $ (input', Left err)
+                    Left err -> Just (input', Left err)
                     Right el -> if null el 
-                        then Just (input', Left $ Error "Error: Null sequence")
+                        then Just (input', Left $ Error msg)
                         else Just (input', Right el)
+
+-- Check that the first character of the input isn't x, it doesn't consume x
+notCharP :: Char -> Parser Char
+notCharP x = Parser lookC 
+        where 
+            lookC [] = Nothing
+            lookC input@(y:_) =
+                if y == x 
+                    then Nothing
+                    else Just (input, Right ' ')
+
+symbolPE :: Parser Char
+symbolPE = symbolP 
+    <|> (Parser $ Just . makeError "expected tape symbol - found " . look)
+
+wordPE :: Parser String
+wordPE = (condition (all (`elem` allowedNameSymbols)) literalP) 
+    <|> (Parser $ Just . makeError "forbidden symbol in word - " . lookLit)
+
+tapePE :: Parser String
+tapePE = (condition (all (`elem` allowedTapeSymbols)) literalP) 
+    <|> (Parser $ Just . makeError "forbidden tape in sequence - " . lookLit)
 
 transitionPE :: Parser Transition
 transitionPE = Transition
-    <$> (ws *> symbolPE <* ws <* charPE '/')
+    <$> (ws *> notCharP '}' *> symbolPE <* ws <* charPE '/')
     <*> (ws *> symbolPE <* ws <* charPE ',')
     <*> (ws *> movePE <* ws <* charPE '-' <* charPE '>')
-    <*> (ws *> notNullE wordPE <* ws <* charPE ';')
+    <*> (ws *> notNullE "expected new state" wordPE <* ws <* charPE ';')
+
+wsE :: Parser String
+wsE = some (charP ' ') 
+    <|> (Parser $ Just . makeError "expected space - found " . look)
+
+stringPE :: String -> Parser String
+stringPE str = stringP str 
+    <|> (Parser $ Just . makeError ("expected \"" ++ str ++ "\" - found ") . lookLit)
+
+statePE :: Parser State
+statePE = (Reject <$> rejectPE)
+      <|> (Accept <$> acceptPE)
+      <|> ((makeState True) <$> initialPE <*> trPE)
+      <|> ((makeState False) <$> normalPE <*> trPE)
+      <|> notCharP '}' *> (Parser $ Just . makeError "expected state keyword - found " . lookLit)
+    where 
+        rejectPE = stringP "reject" *> wsE
+                *> stringPE "state" *> wsE
+                *> notNullE "expected state name" wordPE <* ws <* charPE ';'
+        acceptPE = stringP "accept" *> wsE
+                *> stringPE "state" *> wsE
+                *> notNullE "expected state name" wordPE <* ws <* charPE ';'
+        initialPE = stringP "initial" *> wsE
+                *> stringPE "state" *> wsE
+                *> notNullE "expected state name" wordPE <* ws 
+        normalPE = stringP "state" *> wsE
+                *> notNullE "expected state name" wordPE <* ws
+        trPE = charPE '{' *> 
+            (notNullE "state can't have 0 transitions" . many) transitionPE
+            <* ws <* charPE '}'
+        makeState :: Bool -> String -> [Transition] -> State
+        makeState initial name transitions = State name transitions initial
+
+machinePE :: Parser Automata
+machinePE = Machine
+      <$> (stringP "automata" *> wsE *> notNullE "expected machine name" wordPE <* ws)
+      <*> (charPE '(' *> sepBy comma pair <* ws <* charPE ')' <* ws)
+      <*> (charPE '{' *> 
+        (notNullE "machine can't have 0 states" . many) (ws *> statePE <* ws) 
+        <* charPE '}')
+    where
+        comma = ws *> charP ',' <* ws
+        pair :: Parser (String, String)
+        pair = notCharP ')' *> ((\s1 s2 -> (s1, s2)) <$> notNullE "expected component type" wordPE <*> (wsE *> notNullE "expected component name" wordPE))
