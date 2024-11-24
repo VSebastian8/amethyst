@@ -2,6 +2,7 @@ module SyntaxExamples where
 
 -- Transition Examples 
 -- runParser transitionP transition1
+transition1, transition2, transition3, transition4, transition5 :: String
 transition1 = " A / B , R -> qstare ;  "
 transition2 = "X/_,N->q2;"
 transition3 = "Y/,,L->q3" -- error invalid character and missing ;
@@ -10,6 +11,7 @@ transition5 = "B/B,C -> q" -- error C is not a valid move
 
 -- State Examples
 -- runParser stateP state1
+state1, state2, state3, state4 :: String
 state1 = "initial state nume{ B / B, L -> nume; }"
 state2 = "accept state okk;"
 state3 = "reject state nu_ok;"
@@ -17,6 +19,7 @@ state4 = "state renume {A/A,N->nume;H/B,R->renume;}"
 
 -- Macro Examples
 -- runParser macroP macro1
+macro1, macro2, macro3, macro4, macro5, macro6, macro7, macro8, macro9, macro10, macro11 :: String
 macro1 = "automata comp = complement(and);"
 macro2 = "automata int = intersect(not, not, not);"
 macro3 = "automata ren = reunion(and, or);"
@@ -37,6 +40,7 @@ automata luck = random(q0, q1, q2, 2, 3, 4); -- state names and weights, this on
 
 -- Automata examples
 -- runParser automataP auto1
+auto1, auto2, auto3 :: String
 auto1 = "automata or(){initial state q0 {0 / 0, R -> q0; 1 / 1 , R -> q1; _ / _ , N -> f;} state q1 {0 / 1 , R -> q1; 1 / 1 , N -> q1; _ / _, N -> f;} accept state f;}"
 auto2 = "automata even(){\ 
 \   initial state even {\
@@ -68,6 +72,7 @@ auto3 = "automata two_even(even first, even second) {\
 \}"
 
 -- A program is just a list of automatas (explicit machines and macros)
+program1 :: String
 program1 = " \
 \   automata not(){    \
 \       initial state q0 {     \

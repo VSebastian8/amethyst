@@ -3,35 +3,34 @@ module AdvancedParser where
 import Control.Applicative
 import AmethystSyntax
 
-
-newtype Parser a = Parser {runParser :: String -> Maybe (Either (String, String) (String, a))}
+newtype Error = Error {getErr :: String}
+newtype Parser a = Parser {runParser :: String -> Maybe (String, Either Error a)}
 
 -- Parser instances
 instance Functor Parser where
     fmap f (Parser p) = Parser $ \input -> do
-            res <- p input
+            (input', res) <- p input
             case res of
-                Left (input', err) -> Just $ Left (input', err)
-                Right (input', el) -> Just $ Right (input', f el)
+                Left err -> Just (input', Left err)
+                Right el -> Just (input', Right $ f el)
 
 instance Applicative Parser where
-    pure x = Parser $ \input -> Just $ Right (input, x)
+    pure x = Parser $ \input -> Just (input, Right x)
     (Parser p1) <*> (Parser p2) = Parser $ \input -> do
-            res <- p1 input
+            (input', res) <- p1 input
             case res of
-                Left (input', err) -> Just $ Left (input', err)
-                Right (input', f) -> do
-                    res' <- p2 input'
+                Left err -> Just (input', Left err)
+                Right f  -> do
+                    (input'', res') <- p2 input'
                     case res' of
-                        Left (input'', err) -> Just $ Left (input'', err)
-                        Right (input'', el) -> Just $ Right (input'', f el)
+                        Left err -> Just (input'', Left err)
+                        Right el -> Just (input'', Right $ f el)
 
 
 instance Alternative Parser where
     empty = Parser $ \_ -> Nothing
     (Parser p1) <|> (Parser p2) = Parser $ \input -> do
             p1 input <|> p2 input 
--- runParser (charP 'a' <|> charPE 'b') "bc"  ->  Just (Right ("c",'b'))
 
 -- Basic parser combinators
 charP :: Char -> Parser Char
@@ -39,7 +38,7 @@ charP x = Parser f
     where
         f [] = Nothing
         f (y:ys)
-            |y == x = Just $ Right (ys, x)
+            |y == x = Just (ys, Right x)
             |otherwise = Nothing
 
 stringP :: String -> Parser String
@@ -48,20 +47,20 @@ stringP = sequenceA . map charP
 spanP :: (Char -> Bool) -> Parser String
 spanP f = Parser $ \input -> 
     let (token, rest) = span f input
-    in Just $ Right (rest, token)
+    in Just (rest, Right token)
 
 notNull :: Parser [a] -> Parser [a]
 notNull (Parser p) = Parser $ \input -> do
-                Right (input', el) <- p input
+                (input', Right el) <- p input
                 if null el 
                     then Nothing
-                    else Just $ Right (input', el)
+                    else Just (input', Right el)
 
 condition :: ([a] -> Bool) -> Parser [a] -> Parser [a]
 condition f (Parser p) = Parser $ \input -> do
-                Right (input', el) <- p input
+                (input', Right el) <- p input
                 if f el 
-                    then Just $ Right (input', el)
+                    then Just (input', Right el)
                     else Nothing
 
 sepBy :: Parser a -> Parser b -> Parser [b]
@@ -96,22 +95,22 @@ moveP = (\_ -> L) <$> charP 'L'
 
 -- Advanced parser combinator
 -- If the PE parsers don't succed, they return an error
-look :: String -> (String, String)
-look [] = ("", "no more input")
-look (y:ys) = (ys, "found '" ++ [y] ++ "'")
+look :: String -> (String, Error)
+look [] = ("", Error "no more input")
+look (y:ys) = (ys, Error $ "found '" ++ [y] ++ "'")
 
-lookLit :: String -> (String, String)
-lookLit [] = ("", "")
+lookLit :: String -> (String, Error)
+lookLit [] = ("", Error "")
 lookLit (y:ys) = if and $ map ($y) [not . (`elem` "(){};= \n"), (`elem` allowedNameSymbols ++ allowedTapeSymbols)]
-    then let (fin, rest) = lookLit ys
-         in (fin, y:rest)
-    else (y:ys, "")
+    then let (fin, Error rest) = lookLit ys
+         in (fin, Error $ y:rest)
+    else (y:ys, Error "")
 
-makeError :: String -> (String, String) -> Either (String, String) b
-makeError err (leftover, cause) = Left (leftover, err ++ " - " ++ cause)
+makeError :: String -> (String, Error) -> (String, Either Error b)
+makeError err (leftover, Error cause) = (leftover, Left $ Error $ err ++ " - " ++ cause)
 
 charPE :: Char -> Parser Char
-charPE x = charP x <|> (Parser $ Just . makeError ("Error: Expected'" ++ [x] ++ "'") . look)
+charPE x = charP x <|> (Parser $ Just . makeError ("Error: Expected '" ++ [x] ++ "'") . look )
 
 movePE :: Parser Move
 movePE = moveP <|> (Parser $ Just . makeError "Error: Expected move symbol" . look)
@@ -127,7 +126,16 @@ tapePE = (condition (all (`elem` allowedTapeSymbols)) literalP) <|> (Parser $ Ju
 
 notNullE :: Parser [a] -> Parser [a]
 notNullE (Parser p) = Parser $ \input -> do
-                Right (input', el) <- p input
-                if null el 
-                    then Just $ Left (input', "null input")
-                    else Just $ Right (input', el)
+                (input', res) <- p input
+                case res of 
+                    Left err -> Just $ (input', Left err)
+                    Right el -> if null el 
+                        then Just (input', Left $ Error "Error: Null sequence")
+                        else Just (input', Right el)
+
+transitionPE :: Parser Transition
+transitionPE = Transition
+    <$> (ws *> symbolPE <* ws <* charPE '/')
+    <*> (ws *> symbolPE <* ws <* charPE ',')
+    <*> (ws *> movePE <* ws <* charPE '-' <* charPE '>')
+    <*> (ws *> notNullE wordPE <* ws <* charPE ';')

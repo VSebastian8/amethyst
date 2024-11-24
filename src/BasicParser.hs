@@ -71,11 +71,9 @@ symbolP :: Parser Char
 symbolP = foldr1 (<|>) $ map charP allowedTapeSymbols
 
 moveP :: Parser Move
-moveP = selectMove <$> (foldr1 (<|>) $ map charP "LRN")
-    where selectMove c = case c of
-                            'L' -> L
-                            'R' -> R
-                            'N' -> N
+moveP = (\_ -> L) <$> charP 'L' 
+    <|> (\_ -> R) <$> charP 'R'  
+    <|> (\_ -> N) <$> charP 'N'
 
 transitionP :: Parser Transition
 transitionP = Transition 
