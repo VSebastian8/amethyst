@@ -1,9 +1,9 @@
 module AmethystParser where
 
-import BasicParser
+import AdvancedParser
 import SyntaxExamples
 
 main :: IO ()
 main = do
-    let Just ("", r) = runParser programP auto2
+    let Just (_, Right r) = runParser programPE (Leftover program1 0 0)
     print $ show r

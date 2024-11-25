@@ -1,25 +1,30 @@
 module SyntaxExamples where
 
 -- Transition Examples 
--- runParser transitionP transition1
-transition1, transition2, transition3, transition4, transition5 :: String
+transition1, transition2, transition3, transition4, transition5, transition6, transition7, transition8 :: String
 transition1 = " A / B , R -> qstare ;  "
 transition2 = "X/_,N->q2;"
-transition3 = "Y/,,L->q3" -- error invalid character and missing ;
-transition4 = "AB/CD , R -> q41;" -- error expected character, not string
-transition5 = "B/B,C -> q" -- error C is not a valid move
+transition3 = "Y/,,L->q3" -- error expected tape symbol found ,
+transition4 = "AB/CD , R -> q41;" -- error expected / found B
+transition5 = "B/B,C -> q" -- error expected move found C
+transition6 = "A/AA,L -> we"; -- error expected , found A
+transition7 = "A/B,R-> starE;" -- error forbidden symbol
+transition8 = "A/B,N -> qstare " -- error expected ;
 
 -- State Examples
--- runParser stateP state1
-state1, state2, state3, state4 :: String
+state1, state2, state3, state4, state5, state6, state7, state8, state9 :: String
 state1 = "initial state nume{ B / B, L -> nume; }"
 state2 = "accept state okk;"
 state3 = "reject state nu_ok;"
 state4 = "state renume {A/A,N->nume;H/B,R->renume;}"
+state5 = "acceptstate bad;" -- error missing space
+state6 = "reject statebad;" -- error missing space
+state7 = "state {A/A,R->q;}" -- error missing state name
+state8 = "initial state q;" -- error missing {
+state9 = "initial state q2{}" -- error zero transitions
 
 -- Macro Examples
--- runParser macroP macro1
-macro1, macro2, macro3, macro4, macro5, macro6, macro7, macro8, macro9, macro10, macro11 :: String
+macro1, macro2, macro3, macro4, macro5, macro6, macro7, macro8, macro9, macro10, macro11, macro12, macro13, macro14 :: String
 macro1 = "automata comp = complement(and);"
 macro2 = "automata int = intersect(not, not, not);"
 macro3 = "automata ren = reunion(and, or);"
@@ -31,6 +36,9 @@ macro8 = "automata rescriere = override(L, 5, 'V');"
 macro9 = "automata scriere = place(\"ABCDE\");"
 macro10 = "automata insert8 = shift(R, 8);"
 macro11= "automata delete9 = shift(L, 8);"
+macro12 = "automata bad = repeat(hello);" -- error expected number
+macro13 = "automata bad = move(3, L);" -- error expected move
+macro14 = "automata ch = chain();" -- error expected machine type
 {- Maybe macros:
 
 automata goto_marker = find(R, 'X');
@@ -39,62 +47,86 @@ automata luck = random(q0, q1, q2, 2, 3, 4); -- state names and weights, this on
 -}
 
 -- Automata examples
--- runParser automataP auto1
-auto1, auto2, auto3 :: String
+auto1, auto2, auto3, auto4, auto5, auto6, auto7, auto8 :: String
 auto1 = "automata or(){initial state q0 {0 / 0, R -> q0; 1 / 1 , R -> q1; _ / _ , N -> f;} state q1 {0 / 1 , R -> q1; 1 / 1 , N -> q1; _ / _, N -> f;} accept state f;}"
-auto2 = "automata even(){\ 
-\   initial state even {\
-\      0 / 0, R -> even;\
-\      1 / 1, R -> odd;\
-\      B / B, N -> true;\
-\   }\
-\   state odd{\ 
-\       0 / 0, R -> odd;\
-\       1 / 1, R -> even;\
-\       _ / _, N -> false;\
-\   }\
-\   accept state true;\
-\   reject state false;\
+auto2 = "automata even(){\n\ 
+\   initial state even {\n\
+\      0 / 0, R -> even;\n\
+\      1 / 1, R -> odd;\n\
+\      B / B, N -> true;\n\
+\   }\n\
+\   state odd{\n\ 
+\       0 / 0, R -> odd;\n\
+\       1 / 1, R -> even;\n\
+\       _ / _, N -> false;\n\
+\   }\n\
+\   accept state true;\n\
+\   reject state false;\n\
 \}"
-auto3 = "automata two_even(even first, even second) {\
-\       initial state q0{\
-\           B / B, R -> first.even;\
-\           _ / _, N -> first.even;\
-\       }\
-\       state first.true{\
-\           _ / _, R -> second.even;\
-\       }\
-\       state first.false {_ / _, N -> false;}\
-\       state second.true {_ / _, N -> true;}\
-\       state second.false {_ / _, N -> false;}\
-\       accept state true;\
-\       reject state false;\
+auto3 = "automata two_even(even first, even second) {\n\
+\       initial state q0{\n\
+\           B / B, R -> first.even;\n\
+\           _ / _, N -> first.even;\n\
+\       }\n\
+\       state first.true{\n\
+\           _ / _, R -> second.even;\n\
+\       }\n\
+\       state first.false {_ / _, N -> false;}\n\
+\       state second.true {_ / _, N -> true;}\n\
+\       state second.false {_ / _, N -> false;}\n\
+\       accept state true;\n\
+\       reject state false;\n\
 \}"
+auto4 = "\
+\automata my_mach(){\n\
+\   initial state q0{\n\
+\       A / @ , R -> qstare X / Y , R -> qstare2;\
+\   }\n\
+\}\n\
+\"  -- error missing ;
+auto5 = "automata (not n){}" -- error expected machine name
+auto6 = "automata hello(){}" -- error can't have 0 states
+auto7 = "automata double (not n1, not ){}" -- error expected component name
+auto8 = "automata double (, not n2){}" -- error expected component type
 
 -- A program is just a list of automatas (explicit machines and macros)
-program1 :: String
+program1, program2, program3 :: String
 program1 = " \
-\   automata not(){    \
-\       initial state q0 {     \
-\           @ / @ , R -> q0;   \
-\           1 / 0 , L -> q1;   \
-\           0 / 1 , L -> q1;   \
-\       }   \
-\       accept state q1;    \
-\   }   \
-\   \
-\   automata three = repeat(3, not);\
-\   automata main (not n1, three n2) {    \
-\       initial state q0 {      \
-\           B/B,N-> n1.q0; _/B,R->qrej;     \
-\       }   \
-\       state n1.q1 {_/_,N->n2.q0;}     \
-\       state n2.q1 {   \
-\           _ / _ , N -> qacc;  \
-\       }   \
-\       reject state qrej; accept state qacc;   \
-\   }   \
-\ "
+\   automata not(){    \n\
+\       initial state q0 {     \n\
+\           @ / @ , R -> q0;   \n\
+\           1 / 0 , L -> q1;   \n\
+\           0 / 1 , L -> q1;   \n\
+\       }   \n\
+\       accept state q1;    \n\
+\   }   \n\
+\   \n\
+\   automata three = repeat(3, not);\n\
+\   automata main (not n1, three n2) {    \n\
+\       initial state q0 {      \n\
+\           B/B,N-> n1.q0; _/B,R->qrej;    \n\
+\       }   \n\
+\       state n1.q1 {_/_,N->n2.q0;}    \n\
+\       state n2.q1 {   \n\
+\           _ / _ , N -> qacc;  \n\
+\       }   \n\
+\       reject state qrej; accept state qacc;  \n\
+\   }   \n\
+\"
+program2 = "\
+\automata ch = chain(c1, c2);\n\
+\   \n\
+\auto\n\
+\automata a(){}\n\
+\"
+program3 = "\
+\automata output = place(\"HELLO-WORLD!\");\n\
+\automata mv = move(R, 12);\n\
+\automata place_and_move = chain(output, mv);\n\
+\automata do3 = repeat(3, place_and_move);\n\
+\automata go.back = move(L, 36);\n\
+\automata main = chain(do3, go.back);\n\
+\"
 
 {- Syntax Tree:
 

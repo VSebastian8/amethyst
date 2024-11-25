@@ -4,10 +4,14 @@ import Control.Applicative
 import AmethystSyntax
 
 newtype Error = Error {getErr :: String}
-newtype Parser a = Parser {runParser :: String -> Maybe (String, Either Error a)}
+data Leftover = Leftover {getRest :: String, getLine :: Int, getColumn :: Int}
+newtype Parser a = Parser {runParser :: Leftover -> Maybe (Leftover, Either Error a)}
 
 instance Show Error where
     show (Error e) = "Error: " ++ e 
+instance Show Leftover where
+    show (Leftover str line col) = "[rest: \"" ++ str 
+        ++ "\" at line " ++ show line ++ ", column " ++ show col ++ "]"
 
 -- Parser instances
 instance Functor Parser where
@@ -35,22 +39,34 @@ instance Alternative Parser where
     (Parser p1) <|> (Parser p2) = Parser $ \input -> do
             p1 input <|> p2 input 
 
--- Basic parser combinators
+-- Parser combinators - result or nothing
+nextPos :: Leftover -> Char -> Leftover
+nextPos (Leftover [] _ _) _ = Leftover  "" (-1) (-1)
+nextPos (Leftover (_:ys) line col) x
+    |x == '\n' = Leftover ys (line + 1) 0
+    |otherwise = Leftover ys line (col + 1) 
+
 charP :: Char -> Parser Char
 charP x = Parser f
     where
-        f [] = Nothing
-        f (y:ys)
-            |y == x = Just (ys, Right x)
+        f (Leftover [] _ _) = Nothing
+        f rest@(Leftover (y:_) _ _)
+            |y == x = Just (nextPos rest x, Right x)
+            |otherwise = Nothing
+
+condCharP :: (Char -> Bool) -> Parser Char
+condCharP cond = Parser f
+    where
+        f (Leftover [] _ _) = Nothing
+        f rest@(Leftover (y:_) _ _)
+            |cond y = Just (nextPos rest y, Right y)
             |otherwise = Nothing
 
 stringP :: String -> Parser String
 stringP = sequenceA . map charP
 
 spanP :: (Char -> Bool) -> Parser String
-spanP f = Parser $ \input -> 
-    let (token, rest) = span f input
-    in Just (rest, Right token)
+spanP f = many (condCharP f)
 
 notNull :: Parser [a] -> Parser [a]
 notNull (Parser p) = Parser $ \input -> do
@@ -76,7 +92,7 @@ ws2 :: Parser String
 ws2 = notNull ws
 
 numberP :: Parser Int
-numberP = read <$> spanP (`elem` "0123456789")
+numberP = read <$> (notNull $ spanP (`elem` "0123456789"))
 
 literalP :: Parser String
 literalP = spanP (\c ->
@@ -96,29 +112,25 @@ moveP = (\_ -> L) <$> charP 'L'
     <|> (\_ -> R) <$> charP 'R'  
     <|> (\_ -> N) <$> charP 'N'
 
--- Advanced parser combinator
--- If the PE parsers don't succed, they return an error
-look :: String -> (String, Error)
-look [] = ("", Error "no more input")
-look (y:ys) = (ys, Error $ "'" ++ [y] ++ "'")
+-- Parser combinators - result or error
+look :: Leftover -> (Leftover, Error)
+look l@(Leftover [] _ _) = (l, Error "no more input")
+look (Leftover (y:ys) line col) = (Leftover ys line col, Error $ "'" ++ [y] ++ "'")
 
-lookLit :: String -> (String, Error)
-lookLit [] = ("", Error "")
-lookLit (y:ys) = if and $ map ($y) [not . (`elem` "(){};= \n"), (`elem` allowedNameSymbols ++ allowedTapeSymbols)]
-    then let (fin, Error rest) = lookLit ys
-         in (fin, Error $ y:rest)
-    else (y:ys, Error "")
+lookLit :: Leftover -> (Leftover, Error)
+lookLit l@(Leftover [] _ _) = (l, Error "")
+lookLit l@(Leftover (y:ys) line col) = 
+    if and $ map ($y) [not . (`elem` "(){};= \n"), (`elem` allowedNameSymbols ++ allowedTapeSymbols)]
+        then let (fin, Error rest) = lookLit (Leftover ys line col)
+             in (fin, Error $ y:rest)
+        else (l, Error "")
 
-makeError :: String -> (String, Error) -> (String, Either Error b)
+makeError :: String -> (Leftover, Error) -> (Leftover, Either Error b)
 makeError err (leftover, Error cause) = (leftover, Left $ Error $ err ++ cause)
 
 charPE :: Char -> Parser Char
 charPE x = charP x 
     <|> (Parser $ Just . makeError ("expected '" ++ [x] ++ "' - found ") . look )
-
-movePE :: Parser Move
-movePE = moveP 
-    <|> (Parser $ Just . makeError "expected move symbol - found " . look)
 
 notNullE :: String -> Parser [a] -> Parser [a]
 notNullE msg (Parser p) = Parser $ \input -> do
@@ -133,11 +145,15 @@ notNullE msg (Parser p) = Parser $ \input -> do
 notCharP :: Char -> Parser Char
 notCharP x = Parser lookC 
         where 
-            lookC [] = Nothing
-            lookC input@(y:_) =
+            lookC (Leftover [] _ _) = Nothing
+            lookC l@(Leftover (y:_) _ _) =
                 if y == x 
                     then Nothing
-                    else Just (input, Right ' ')
+                    else Just (l, Right ' ')
+
+numberPE :: Parser Int
+numberPE = numberP 
+    <|> (Parser $ Just . makeError "expected number - found " . lookLit)
 
 symbolPE :: Parser Char
 symbolPE = symbolP 
@@ -150,6 +166,10 @@ wordPE = (condition (all (`elem` allowedNameSymbols)) literalP)
 tapePE :: Parser String
 tapePE = (condition (all (`elem` allowedTapeSymbols)) literalP) 
     <|> (Parser $ Just . makeError "forbidden tape in sequence - " . lookLit)
+
+movePE :: Parser Move
+movePE = moveP 
+    <|> (Parser $ Just . makeError "expected move symbol - found " . look)
 
 transitionPE :: Parser Transition
 transitionPE = Transition
@@ -192,8 +212,8 @@ statePE = (Reject <$> rejectPE)
 
 machinePE :: Parser Automata
 machinePE = Machine
-      <$> (stringP "automata" *> wsE *> notNullE "expected machine name" wordPE <* ws)
-      <*> (charPE '(' *> sepBy comma pair <* ws <* charPE ')' <* ws)
+      <$> (stringP "automata" *> wsE *> notNullE "expected automata name" wordPE <* ws)
+      <*> (charP '(' *> sepBy comma pair <* ws <* charPE ')' <* ws)
       <*> (charPE '{' *> 
         (notNullE "machine can't have 0 states" . many) (ws *> statePE <* ws) 
         <* charPE '}')
@@ -201,3 +221,68 @@ machinePE = Machine
         comma = ws *> charP ',' <* ws
         pair :: Parser (String, String)
         pair = notCharP ')' *> ((\s1 s2 -> (s1, s2)) <$> notNullE "expected component type" wordPE <*> (wsE *> notNullE "expected component name" wordPE))
+
+-- Macro Parsers
+complementPE :: Parser MacroKeyword
+complementPE = Complement 
+    <$> (stringP "complement" *> ws *> charPE '(' *> ws 
+         *> notNullE "expected machine type" wordPE <* ws <* charPE ')')
+
+intersectPE :: Parser MacroKeyword
+intersectPE = Intersect 
+    <$> (stringP "intersect" *> ws *> charPE '(' *> ws *>
+         sepBy (ws *> charP ',' <* ws) (notNullE "expected machine type" wordPE) 
+         <* ws <* charPE ')')
+
+reunionPE :: Parser MacroKeyword
+reunionPE = Reunion 
+    <$> (stringP "reunion" *> ws *> charPE '(' *> ws *>
+         sepBy (ws *> charP ',' <* ws) (notNullE "expected machine type" wordPE) 
+         <* ws <* charPE ')')
+
+chainPE :: Parser MacroKeyword
+chainPE = Chain 
+    <$> (stringP "chain" *> ws *> charPE '(' *> ws *>
+         sepBy (ws *> charP ',' <* ws) (notNullE "expected machine type" wordPE) 
+         <* ws <* charPE ')')
+
+repeatPE :: Parser MacroKeyword
+repeatPE = Repeat 
+    <$> (stringP "repeat" *> ws *> charPE '(' *> ws *> numberPE <* ws) 
+    <*> (charPE ',' *> ws *> (notNullE "expected machine type" wordPE) <* ws <* charPE ')')
+
+moveMPE :: Parser MacroKeyword
+moveMPE = Move 
+    <$> (stringP "move" *> ws *> charPE '(' *> ws *> movePE <* ws) 
+    <*> (charPE ',' *> ws *> numberPE <* ws <* charPE ')')
+
+overridePE :: Parser MacroKeyword
+overridePE = Override
+    <$> (stringP "override" *> ws *> charPE '(' *> ws *> movePE <* ws)
+    <*> (charPE ',' *> ws *> numberPE <* ws <* charPE ',' <* ws)
+    <*> (charPE '\'' *> symbolPE <* charPE '\''  <* ws <* charPE ')')
+
+placePE :: Parser MacroKeyword
+placePE = Place 
+    <$> (stringP "place" *> ws *> charPE '(' *> ws *>
+         charPE '"' *> tapePE <* charPE '"' <* ws <* charPE ')')
+
+shiftPE :: Parser MacroKeyword
+shiftPE = Shift
+    <$> (stringP "shift" *> ws *> charPE '(' *> ws *> movePE <* ws)
+    <*> (charPE ',' *> ws *> numberPE <* ws <* charPE ')')
+
+macroPE :: Parser Automata
+macroPE = Macro 
+    <$> (stringP "automata" *> wsE *> notNullE "expected automata name" wordPE 
+        <* ws <* charP '=' <* ws)
+    <*> (complementPE <|> intersectPE <|> reunionPE <|> chainPE <|> repeatPE
+        <|> moveMPE <|> overridePE <|> placePE <|> shiftPE) <* ws <* charPE ';'
+
+automataPE :: Parser Automata
+automataPE = macroPE <|> machinePE
+
+programPE :: Parser Program
+programPE = Program <$> many  
+    (ws *> automataPE <* ws
+    <|> notCharP ' ' *> (Parser $ Just . makeError "unexpected keyword - " . lookLit))
