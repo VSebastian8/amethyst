@@ -28,3 +28,4 @@ testing/
 # Added by cargo
 
 /target
+/lib
