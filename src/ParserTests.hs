@@ -24,7 +24,6 @@ span1 = runParser (spanP (`elem` ['A'..'Z'])) (Leftover "EXEMPLul 1" 0 0)
 span2 = runParser (spanP (`elem` ['A'..'Z'])) (Leftover "exemplul 2" 0 0)
 span3 = runParser (notNull $ spanP (`elem` ['A'..'Z'])) (Leftover "exemplu null" 0 0)
 
-
 condList1, condList2 :: Maybe (Leftover, Either Error [Char])
 condList1 = runParser (condition ((== 3).length) (spanP (`elem` "abc"))) (Leftover "abczabc2" 0 0)
 condList2 = runParser (condition ((== 3).length) (spanP (`elem` "abc"))) (Leftover "abcabc" 0 0)

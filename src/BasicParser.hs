@@ -3,26 +3,31 @@ module BasicParser where
 import Control.Applicative
 import AmethystSyntax
 
-
 newtype Parser a = Parser {runParser :: String -> Maybe (String, a)}
 
 -- Parser instances
 instance Functor Parser where
-    fmap f (Parser p) = Parser (\input -> do
-                        (input', x) <- p input
-                        Just (input', f x))
+    fmap f (Parser p) =
+        Parser $
+            \input -> do
+                (input', x) <- p input
+                Just (input', f x)
 
 instance Applicative Parser where
     pure x = Parser $ \input -> Just (input, x)
-    (Parser p1) <*> (Parser p2) = Parser $ \input -> do
-                        (input1, f) <- p1 input
-                        (input2, x) <- p2 input1
-                        Just (input2, f x)
+    (Parser p1) <*> (Parser p2) =
+        Parser $
+            \input -> do
+                (input1, f) <- p1 input
+                (input2, x) <- p2 input1
+                Just (input2, f x)
 
 instance Alternative Parser where
-    empty = Parser $ \_ -> Nothing
-    (Parser p1) <|> (Parser p2) = Parser $ \input -> do
-                        p1 input <|> p2 input
+    empty = Parser $ const Nothing
+    (Parser p1) <|> (Parser p2) =
+        Parser $
+            \input ->
+                p1 input <|> p2 input
 
 -- Parser combinators
 charP :: Char -> Parser Char
@@ -34,17 +39,17 @@ charP x = Parser f
             |otherwise = Nothing
 
 stringP :: String -> Parser String
-stringP = sequenceA . map charP
+stringP = traverse charP
 
 spanP :: (Char -> Bool) -> Parser String
-spanP f = Parser $ \input -> 
+spanP f = Parser $ \input ->
     let (token, rest) = span f input
     in Just (rest, token)
 
 notNull :: Parser [a] -> Parser [a]
 notNull (Parser p) = Parser $ \input -> do
                 (input', xs) <- p input
-                if null xs 
+                if null xs
                     then Nothing
                     else Just (input', xs)
 
@@ -55,7 +60,7 @@ ws :: Parser String
 ws = spanP (\c -> c == ' ' || c == '\n')
 
 -- At least one white space
-ws2 :: Parser String 
+ws2 :: Parser String
 ws2 = notNull ws
 
 numberP :: Parser Int
@@ -71,33 +76,33 @@ symbolP :: Parser Char
 symbolP = foldr1 (<|>) $ map charP allowedTapeSymbols
 
 moveP :: Parser Move
-moveP = (\_ -> L) <$> charP 'L' 
-    <|> (\_ -> R) <$> charP 'R'  
-    <|> (\_ -> N) <$> charP 'N'
+moveP = L <$ charP 'L'
+    <|> R <$ charP 'R'
+    <|> N <$ charP 'N'
 
 transitionP :: Parser Transition
-transitionP = Transition 
-        <$> (ws *> symbolP <* ws <* charP '/') 
+transitionP = Transition
+        <$> (ws *> symbolP <* ws <* charP '/')
         <*> (ws *> symbolP <* ws <* charP ',')
         <*> (ws *> moveP <* ws <* stringP "->")
         <*> (ws *> wordP <* ws <* charP ';')
 
 stateP :: Parser State
-stateP = (Reject <$> rejectP) 
-     <|> (Accept <$> acceptP) 
-     <|> ((makeState True) <$> initialP <*> trP)
-     <|> ((makeState False) <$> normalP <*> trP)
+stateP = Reject <$> rejectP
+     <|> Accept <$> acceptP
+     <|> makeState True <$> initialP <*> trP
+     <|> makeState False <$> normalP <*> trP
     where
-        rejectP  =  stringP "reject" *> ws2 
-                    *> stringP "state" *> ws2 
+        rejectP  =  stringP "reject" *> ws2
+                    *> stringP "state" *> ws2
                     *> wordP <* ws <* charP ';'
-        acceptP  =  stringP "accept" *> ws2 
-                    *> stringP "state" *> ws2 
+        acceptP  =  stringP "accept" *> ws2
+                    *> stringP "state" *> ws2
                     *> wordP <* ws <* charP ';'
-        initialP =  stringP "initial" *> ws2 
-                    *> stringP "state" *> ws2 
+        initialP =  stringP "initial" *> ws2
+                    *> stringP "state" *> ws2
                     *> wordP <* ws
-        normalP  =  stringP "state" *> ws 
+        normalP  =  stringP "state" *> ws
                     *> wordP <* ws
         trP = charP '{' *> some transitionP <* ws <* charP '}'
         makeState :: Bool -> String -> [Transition] -> State
@@ -105,33 +110,33 @@ stateP = (Reject <$> rejectP)
 
 -- Macro Parsers
 complementP :: Parser MacroKeyword
-complementP = Complement 
-    <$> (stringP "complement" *> ws *> charP '(' *> ws 
+complementP = Complement
+    <$> (stringP "complement" *> ws *> charP '(' *> ws
          *> wordP <* ws <* charP ')')
 
 intersectP :: Parser MacroKeyword
-intersectP = Intersect 
+intersectP = Intersect
     <$> (stringP "intersect" *> ws *> charP '(' *> ws *>
          sepBy (ws *> charP ',' <* ws) wordP <* ws <* charP ')')
 
 reunionP :: Parser MacroKeyword
-reunionP = Reunion 
+reunionP = Reunion
     <$> (stringP "reunion" *> ws *> charP '(' *> ws *>
          sepBy (ws *> charP ',' <* ws) wordP <* ws <* charP ')')
 
 chainP :: Parser MacroKeyword
-chainP = Chain 
+chainP = Chain
     <$> (stringP "chain" *> ws *> charP '(' *> ws *>
          sepBy (ws *> charP ',' <* ws) wordP <* ws <* charP ')')
 
 repeatP :: Parser MacroKeyword
-repeatP = Repeat 
-    <$> (stringP "repeat" *> ws *> charP '(' *> ws *> numberP <* ws) 
+repeatP = Repeat
+    <$> (stringP "repeat" *> ws *> charP '(' *> ws *> numberP <* ws)
     <*> (charP ',' *> ws *> wordP <* ws <* charP ')')
 
 moveMP :: Parser MacroKeyword
-moveMP = Move 
-    <$> (stringP "move" *> ws *> charP '(' *> ws *> moveP <* ws) 
+moveMP = Move
+    <$> (stringP "move" *> ws *> charP '(' *> ws *> moveP <* ws)
     <*> (charP ',' *> ws *> numberP <* ws <* charP ')')
 
 overrideP :: Parser MacroKeyword
@@ -141,7 +146,7 @@ overrideP = Override
     <*> (charP '\'' *> symbolP <* charP '\''  <* ws <* charP ')')
 
 placeP :: Parser MacroKeyword
-placeP = Place 
+placeP = Place
     <$> (stringP "place" *> ws *> charP '(' *> ws *>
          charP '"' *> tapeP <* charP '"' <* ws <* charP ')')
 
@@ -151,7 +156,7 @@ shiftP = Shift
     <*> (charP ',' *> ws *> numberP <* ws <* charP ')')
 
 macroP :: Parser Automata
-macroP = Macro 
+macroP = Macro
     <$> (stringP "automata" *> ws2 *> wordP <* ws <* charP '=' <* ws)
     <*> (complementP <|> intersectP <|> reunionP <|> chainP <|> repeatP
         <|> moveMP <|> overrideP <|> placeP <|> shiftP) <* ws <* charP ';'
@@ -161,10 +166,10 @@ machineP = Machine
     <$> (stringP "automata" *> ws2 *> wordP <* ws)
     <*> (charP '(' *> sepBy comma pair <* charP ')' <* ws)
     <*> (charP '{' *> some (ws *> stateP <* ws) <* charP '}')
-    where 
+    where
         comma = ws *> charP ',' <* ws
         pair :: Parser (String, String)
-        pair = (\s1 s2 -> (s1, s2)) <$> wordP <*> (ws2 *> wordP)
+        pair = (,) <$> wordP <*> (ws2 *> wordP)
 
 automataP :: Parser Automata
 automataP = macroP <|> machineP
