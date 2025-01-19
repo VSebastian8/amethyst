@@ -7,10 +7,10 @@ pub enum Move {
 
 #[derive(Debug)]
 pub struct Transition {
-    pub readSymbol: char,
-    pub writeSymbol: char,
-    pub moveSymbol: Move,
-    pub newState: String,
+    pub read_symbol: char,
+    pub write_symbol: char,
+    pub move_symbol: Move,
+    pub new_state: String,
 }
 
 #[derive(Debug)]
