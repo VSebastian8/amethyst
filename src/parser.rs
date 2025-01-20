@@ -15,7 +15,7 @@ extern "C" {
     fn transition_write_symbol(transition_ptr: *mut i32) -> c_char;
     fn transition_move_symbol(transition_ptr: *mut i32) -> *mut i32;
     fn transition_new_state(transition_ptr: *mut i32) -> *mut c_char;
-    fn test_transition() -> *mut i32;
+    fn test_transition(n: i32) -> *mut i32;
     fn free_transition(transition_ptr: *mut i32);
     // Result functions
     fn result_type(res: *mut i32) -> i32;
@@ -24,7 +24,6 @@ extern "C" {
 }
 
 fn parse_transition(transition: *mut i32) -> Transition {
-    println!("Parsing a transition");
     unsafe {
         let read_symbol = transition_read_symbol(transition) as u8 as char;
         let write_symbol = transition_write_symbol(transition) as u8 as char;
@@ -57,8 +56,8 @@ pub fn test_transition_parser() -> Transition {
     let transition;
     unsafe {
         initialize_haskell();
-        let tran = test_transition();
-        transition = parse_transition(tran);
+        let transition_ptr = test_transition(1);
+        transition = parse_transition(transition_ptr);
         exit_haskell();
     }
     transition

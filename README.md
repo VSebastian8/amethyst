@@ -40,3 +40,8 @@ The following macros are present so far:
 - `shift` (moveSymbol, number)
   - a right shift inserts a number of cells to the right of the current position (all of the cells to the right of the head shift right)
   - a left shift deletes a number of cells to the left of the current position (all of the cells to the right of the head shift left)
+
+### Checking for memory leaks
+
+cargo run \
+valgrind target/debug/amethyst --leak-check=full -s

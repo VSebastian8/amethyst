@@ -1,6 +1,5 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE InstanceSigs #-}
 
 module ParserFFI where
 
@@ -9,13 +8,14 @@ import AdvancedParser
 import AmethystSyntax
 import Foreign
 import Foreign.C.String (CString, newCString, peekCString)
-import System.IO.Unsafe (unsafePerformIO)
 import Control.Monad (zipWithM_) 
+import System.IO.Unsafe (unsafePerformIO)
+import qualified System.Mem
 
 -- Type sent to Rust
 data Result = Prog {getProgram :: Program} | Err {getError :: Error}
 
-data TransitionC = TransitionC Char Char (Ptr Move) CString
+data TransitionC = TransitionC !Char !Char !(Ptr Move) !CString
 
 -- Storable for List (holds the length and then the elements)
 instance Storable a => Storable ([] a) where
@@ -34,8 +34,8 @@ instance Storable a => Storable ([] a) where
 
 -- Storable instances for all syntax data types
 instance Storable Move where
-  sizeOf _ = sizeOf (undefined :: Ptr Move)
-  alignment _ = alignment (undefined :: Ptr Move)
+  sizeOf _ = sizeOf (undefined :: Int)
+  alignment _ = alignment (undefined :: Int)
   poke ptr move = case move of
     L -> poke (castPtr ptr :: Ptr Int) 0
     R -> poke (castPtr ptr :: Ptr Int) 1
@@ -48,19 +48,21 @@ instance Storable Move where
       _ -> N
 
 instance Storable TransitionC where
-  sizeOf _ = 2 * sizeOf (undefined :: Ptr Char) + sizeOf (undefined :: Ptr CString) + sizeOf (undefined :: Ptr (Ptr Move))
-  alignment _ = alignment (undefined :: Ptr TransitionC)
+  sizeOf _ = 2 * sizeOf (undefined :: Ptr Char) 
+               + sizeOf (undefined :: Ptr (Ptr Move))
+               + sizeOf (undefined :: Ptr CString) 
+  alignment _ = alignment (undefined :: CString)
   poke ptr (TransitionC readSymbol writeSymbol movePtr newState) = do
-    pokeElemOff (castPtr ptr :: Ptr Char) 1 readSymbol
-    pokeElemOff (castPtr ptr :: Ptr Char) 2 writeSymbol
-    pokeElemOff (castPtr ptr :: Ptr (Ptr Move)) 3 movePtr
-    pokeElemOff (castPtr ptr :: Ptr CString) 4 newState
+    poke (castPtr ptr) readSymbol
+    poke (castPtr ptr `plusPtr` sizeOf (undefined :: Char)) writeSymbol
+    poke (castPtr ptr `plusPtr` (2 * sizeOf (undefined :: Char))) movePtr
+    poke (castPtr ptr `plusPtr` (2 * sizeOf (undefined :: Char) + sizeOf (undefined :: Ptr Move))) newState
   peek ptr = do
-    readSymbol <- peekElemOff (castPtr ptr :: Ptr Char) 1
-    writeSymbol <- peekElemOff (castPtr ptr :: Ptr Char) 2 
-    moveSymbol <- peekElemOff (castPtr ptr :: Ptr (Ptr Move)) 3 
-    newState <- peekElemOff (castPtr ptr :: Ptr CString) 4 
-    return $ TransitionC readSymbol writeSymbol moveSymbol newState
+    readSymbol <- peek (castPtr ptr) 
+    writeSymbol <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Char)) 
+    movePtr <- peek (castPtr ptr `plusPtr` (2 * sizeOf (undefined :: Char)))
+    newState <- peek (castPtr ptr `plusPtr` (2 * sizeOf (undefined :: Char) + sizeOf (undefined :: Ptr Move)))
+    return $ TransitionC readSymbol writeSymbol movePtr newState
 
 instance Storable State where
   sizeOf _ = sizeOf (undefined :: Ptr State)
@@ -86,7 +88,6 @@ instance Storable Automata where
 
 instance Storable Program where
   sizeOf _ = sizeOf (undefined :: Ptr Program)
-  alignment :: Program -> Int
   alignment _ = sizeOf (undefined :: Ptr Program)
   poke ptr program = undefined
   peek ptr = undefined 
@@ -158,13 +159,18 @@ transitionNewState tranPtr = do
 foreign export ccall "free_transition" freeTransition :: Ptr TransitionC -> IO ()
 freeTransition :: Ptr TransitionC -> IO()
 freeTransition tranPtr = do
-  TransitionC _ _ movePtr _ <- peek tranPtr
+  TransitionC _ _ movePtr newState <- peek tranPtr
+  -- putStrLn $ "Freeing transition at: " ++ show tranPtr ++ " with size " ++ show (sizeOf tranPtr) ++ " and alignment " ++ show (alignment tranPtr)
   free movePtr
-  free tranPtr
+  free newState
+  free tranPtr  
 
-foreign export ccall "test_transition" testTransition :: IO (Ptr TransitionC)
-testTransition :: IO (Ptr TransitionC)
-testTransition = new $ TransitionC 'x' 'y' (unsafePerformIO $ new N) (unsafePerformIO $  newCString "qstare2")
+foreign export ccall "test_transition" testTransition :: Int -> IO (Ptr TransitionC)
+testTransition :: Int -> IO (Ptr TransitionC)
+testTransition n = new $ TransitionC 'x' 'y' (unsafePerformIO $ new (getMove n)) (unsafePerformIO $  newCString ("qstare" ++ show n))
+  where getMove 0 = L
+        getMove 1 = R
+        getMove _ = N
 
 -- Result functions
 foreign export ccall "result_type" resultType :: Ptr Result -> IO Int
@@ -185,4 +191,6 @@ foreign export ccall parse :: CString -> IO (Ptr Result)
 parse :: CString -> IO (Ptr Result)
 parse _ = new $ (Err . Error) "hello, I am an error"
 
-
+foreign export ccall "clean_up" cleanUp :: IO ()
+cleanUp :: IO()
+cleanUp = System.Mem.performGC
