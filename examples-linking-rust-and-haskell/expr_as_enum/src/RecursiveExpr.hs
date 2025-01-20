@@ -3,6 +3,10 @@
 module RecursiveExpr where
 
 import Foreign
+    ( Ptr,
+      new,
+      castPtr,
+      Storable(peek, sizeOf, alignment, peekElemOff, poke, pokeElemOff) )
 import Foreign.Ptr (Ptr)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -32,6 +36,7 @@ instance Storable ExprC where
                 left <- peekElemOff (castPtr ptr :: Ptr (Ptr ExprC)) 1
                 right <- peekElemOff (castPtr ptr :: Ptr (Ptr ExprC)) 2
                 return $ AddC left right
+            _ -> undefined
 
     poke ptr ZeroC = poke (castPtr ptr :: Ptr Int) 0
     poke ptr (NumberC n) = do
@@ -70,7 +75,7 @@ createComplexExpr = do
 evalExpr :: Expr -> Int
 evalExpr Zero = 0
 evalExpr (Number n) = n
-evalExpr (Add e1 e2) = (evalExpr e1) + (evalExpr e2)
+evalExpr (Add e1 e2) = evalExpr e1 + evalExpr e2
 
 -- Api function - calls evalExpr
 foreign export ccall evaluateExpr :: Ptr ExprC -> IO Int
@@ -81,7 +86,7 @@ evaluateExpr expr = do
     return $ evalExpr $ decryptExpr exp
 
 -- Api function to figure out the type of expression
-foreign export ccall expressionType :: Ptr ExprC -> IO Int 
+foreign export ccall expressionType :: Ptr ExprC -> IO Int
 expressionType expr = do
     exp <- peek expr
     case exp of

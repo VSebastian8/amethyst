@@ -6,10 +6,10 @@ import Foreign.C.String
 
 foreign export ccall reverseString :: CString -> IO CString
 
-make_reverse :: String -> String
-make_reverse = foldl (\res s -> s : res) ""
+makeReverse :: String -> String
+makeReverse = foldl (flip (:)) ""
 
 reverseString :: CString -> IO CString
 reverseString cstr = do
   str <- peekCString cstr
-  newCString (make_reverse str)
+  newCString (makeReverse str)

@@ -6,7 +6,7 @@ import Foreign
 import Foreign.C
 import Control.Monad (zipWithM_) 
 
-data Box = Box CInt deriving (Show)
+newtype Box = Box CInt deriving (Show)
 
 data MyList = MyList Int [Box] deriving (Show)
 
