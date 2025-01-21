@@ -68,6 +68,14 @@ fn main() {
             subfolder
         )
     );
+    // Also the relative path from the tests directory
+    println!(
+        "{}",
+        format!(
+            "cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../../../{}",
+            subfolder
+        )
+    );
     // Specify the libraries' location
     println!(
         "{}",

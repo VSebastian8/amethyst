@@ -45,3 +45,11 @@ The following macros are present so far:
 
 cargo run \
 valgrind target/debug/amethyst --leak-check=full -s
+
+### Testing the FFI parser
+
+cargo test --test parser_tests -- --nocapture --test-threads=1
+
+> Runs all tests from tests/parser_tests.rs \
+> Shows the output of println! \
+> Runs tests sequentially (memory issues if run in parallel)

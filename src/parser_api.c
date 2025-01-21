@@ -22,7 +22,12 @@ extern char transition_write_symbol(const int *transition);
 extern int *transition_move_symbol(const int *transition);
 extern char *transition_new_state(const int *transition);
 extern void free_transition(const int *transition);
+// State functions
+extern int state_type(const int *state);
+extern char *state_name(const int *state);
+// Test functions
 extern int *test_transition(int n);
+extern int *test_state(int n);
 // Result functions
 extern int *result_type(const int *result);
 extern char *return_error(const int *error);

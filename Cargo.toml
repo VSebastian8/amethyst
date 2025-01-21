@@ -5,3 +5,5 @@ edition = "2021"
 authors = ["VSebastian8"]
 
 [dependencies]
+serial_test = "0.5"
+ctor = "0.1"
