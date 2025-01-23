@@ -1,6 +1,9 @@
 extern "C" {
     fn initialize_haskell();
     fn exit_haskell();
+    // Always free memory after using it
+    fn free_transition(transition_ptr: *mut i32);
+    fn free_state(state: *mut i32);
     // Test functions
     fn test_transition(n: i32) -> *mut i32;
     fn test_state(n: i32) -> *mut i32;
@@ -35,6 +38,7 @@ mod tests {
         unsafe {
             let transition_ptr = test_transition(1);
             let transition = parse_transition(transition_ptr);
+            free_transition(transition_ptr);
             println!("{:?}", transition);
         }
     }
@@ -45,6 +49,7 @@ mod tests {
         unsafe {
             let transition_ptr = test_transition(2);
             let transition = parse_transition(transition_ptr);
+            free_transition(transition_ptr);
             println!("{:?}", transition);
         }
     }
@@ -55,6 +60,7 @@ mod tests {
         unsafe {
             let state_ptr = test_state(1);
             let state = parse_state(state_ptr);
+            free_state(state_ptr);
             println!("{:?}", state);
         }
     }
@@ -65,6 +71,7 @@ mod tests {
         unsafe {
             let state_ptr = test_state(2);
             let state = parse_state(state_ptr);
+            free_state(state_ptr);
             println!("{:?}", state);
         }
     }
@@ -75,6 +82,7 @@ mod tests {
         unsafe {
             let state_ptr = test_state(3);
             let state = parse_state(state_ptr);
+            free_state(state_ptr);
             println!("{:?}", state);
         }
     }
@@ -85,6 +93,7 @@ mod tests {
         unsafe {
             let state_ptr = test_state(4);
             let state = parse_state(state_ptr);
+            // free_state(state_ptr);
             println!("{:?}", state);
         }
     }

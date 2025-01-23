@@ -15,7 +15,7 @@ pub struct Transition {
 
 #[derive(Debug)]
 pub struct State {
-    pub transitions: Box<[Transition]>,
+    pub transitions: Box<Vec<Transition>>,
     pub initial: bool,
 }
 

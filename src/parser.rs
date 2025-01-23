@@ -15,10 +15,13 @@ extern "C" {
     fn transition_write_symbol(transition_ptr: *mut i32) -> c_char;
     fn transition_move_symbol(transition_ptr: *mut i32) -> *mut i32;
     fn transition_new_state(transition_ptr: *mut i32) -> *mut c_char;
-    fn free_transition(transition_ptr: *mut i32);
     // State functions
-    fn state_type(state: *mut i32) -> i32;
-    fn state_name(state: *mut i32) -> *mut c_char;
+    fn state_type(state_ptr: *mut i32) -> i32;
+    fn state_name(state_ptr: *mut i32) -> *mut c_char;
+    fn state_is_initial(state_ptr: *mut i32) -> bool;
+    fn state_tr_len(state_ptr: *mut i32) -> i32;
+    fn state_transitions(state_ptr: *mut i32) -> *mut i32;
+    fn state_transition_i(transitions_ptr: *mut i32, i: i32) -> *mut i32;
     // Result functions
     fn result_type(res: *mut i32) -> i32;
     fn return_error(res: *mut i32) -> *mut c_char;
@@ -48,8 +51,6 @@ pub fn parse_transition(transition_ptr: *mut i32) -> Transition {
             .to_str()
             .expect("Error converting CString to String")
             .to_owned();
-        // Always free the pointer after processing the data
-        free_transition(transition_ptr);
 
         Transition {
             read_symbol,
@@ -69,7 +70,25 @@ pub fn parse_state(state_ptr: *mut i32) -> StateType {
         match state_type(state_ptr) {
             0 => StateType::Accept(state_name),
             1 => StateType::Reject(state_name),
-            2 => StateType::Accept(state_name),
+            2 => {
+                let initial = state_is_initial(state_ptr);
+                let transitions_len = state_tr_len(state_ptr);
+                let transitions_ptr = state_transitions(state_ptr);
+                // Get transitions one by one
+                let transitions = Box::new(
+                    (0..transitions_len)
+                        .map(|i| state_transition_i(transitions_ptr, i))
+                        .map(parse_transition)
+                        .collect(),
+                );
+                StateType::State(
+                    state_name,
+                    State {
+                        initial,
+                        transitions,
+                    },
+                )
+            }
             _ => panic!("Unexpected state type"),
         }
     }

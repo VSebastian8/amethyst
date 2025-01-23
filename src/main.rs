@@ -1,3 +1,3 @@
 fn main() {
-    println!("Amethyst - Turing Machine Programming Language")
+    println!("Amethyst - Turing Machine Programming Language");
 }

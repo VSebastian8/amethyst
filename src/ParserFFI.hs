@@ -21,21 +21,6 @@ data TransitionC = TransitionC !Char !Char !(Ptr Move) !CString
 
 data StateC = AcceptC !CString | RejectC !CString | StateC !CString !Bool !Int ![Ptr TransitionC]
 
--- Storable for List (holds the length and then the elements)
-instance Storable a => Storable ([] a) where
-  sizeOf _ = sizeOf (undefined :: Int) + sizeOf (undefined :: Ptr a)
-  alignment _ = alignment (undefined :: Ptr a)
-  poke ptr list = do
-    let elemSize = length list * sizeOf (undefined :: a)
-    elemsPtr <- mallocBytes elemSize
-    zipWithM_ (pokeElemOff elemsPtr) [0..] list
-    poke (castPtr ptr :: Ptr Int) (length list)
-    poke (ptr `plusPtr` sizeOf (undefined :: Int) :: Ptr (Ptr a)) elemsPtr
-  peek ptr = do
-    len <- peek (castPtr ptr :: Ptr Int)
-    elemsPtr <- peek (ptr `plusPtr` sizeOf (undefined :: Int) :: Ptr (Ptr a))
-    mapM (peekElemOff elemsPtr) [0..len-1]
-
 -- Storable instances for all syntax data types
 instance Storable Move where
   sizeOf _ = sizeOf (undefined :: Int)
@@ -95,13 +80,13 @@ instance Storable StateC where
         + sizeOf (undefined :: Bool) )) len
       -- List allocation (should be freed)
       transitionArray <- mallocBytes $ length transitions * sizeOf(undefined :: Ptr TransitionC)
+      poke (castPtr ptr `plusPtr`
+        ( sizeOf (undefined :: Int)
+        + sizeOf (undefined :: Ptr CString)
+        + sizeOf (undefined :: Bool)
+        + sizeOf (undefined :: Int) )) transitionArray
       forM_ (zip transitions [0..]) $ \(transition, i) -> do
         pokeElemOff (castPtr transitionArray :: Ptr (Ptr TransitionC)) i transition
-        poke (castPtr ptr `plusPtr`
-          ( sizeOf (undefined :: Int)
-          + sizeOf (undefined :: Ptr CString)
-          + sizeOf (undefined :: Bool)
-          + sizeOf (undefined :: Int) )) transitionArray
   peek ptr = do
     tag <- peek (castPtr ptr :: Ptr Int)
     case tag of
@@ -125,7 +110,7 @@ instance Storable StateC where
           + sizeOf (undefined :: Ptr CString)
           + sizeOf (undefined :: Bool)
           + sizeOf (undefined :: Int) ))
-        transitions <- forM [0..len] $ \i ->
+        transitions <- forM [0..len - 1] $ \i ->
             peekElemOff (castPtr transitionArray :: Ptr (Ptr TransitionC)) i
         return $ StateC stateName isInitial len transitions
       _ -> undefined
@@ -196,7 +181,6 @@ encryptState (State name transitions initial) =
 
 -- Functions exposed through the C api
 foreign export ccall "move_type" moveType :: Ptr Move -> IO Int
-moveType :: Ptr Move -> IO Int
 moveType movePtr = do
   move <- peek movePtr
   return $ case move of
@@ -206,41 +190,34 @@ moveType movePtr = do
 
 -- Transition functions
 foreign export ccall "transition_read_symbol" transitionReadSymbol :: Ptr TransitionC -> IO Char
-transitionReadSymbol :: Ptr TransitionC -> IO Char
 transitionReadSymbol tranPtr = do
   TransitionC readSymbol _ _ _ <- peek tranPtr
   return readSymbol
 
 foreign export ccall "transition_write_symbol" transitionWriteSymbol :: Ptr TransitionC -> IO Char
-transitionWriteSymbol :: Ptr TransitionC -> IO Char
 transitionWriteSymbol tranPtr = do
   TransitionC _ writeSymbol _ _ <- peek tranPtr
   return writeSymbol
 
 foreign export ccall "transition_move_symbol" transitionMoveSymbol :: Ptr TransitionC -> IO (Ptr Move)
-transitionMoveSymbol :: Ptr TransitionC -> IO (Ptr Move)
 transitionMoveSymbol tranPtr = do
   TransitionC _ _ movePtr _ <- peek tranPtr
   return movePtr
 
 foreign export ccall "transition_new_state" transitionNewState :: Ptr TransitionC -> IO CString
-transitionNewState :: Ptr TransitionC -> IO CString
 transitionNewState tranPtr = do
   (TransitionC _ _ _ newState) <- peek tranPtr
   return newState
 
 foreign export ccall "free_transition" freeTransition :: Ptr TransitionC -> IO ()
-freeTransition :: Ptr TransitionC -> IO()
 freeTransition tranPtr = do
   TransitionC _ _ movePtr newState <- peek tranPtr
-  -- putStrLn $ "Freeing transition at: " ++ show tranPtr ++ " with size " ++ show (sizeOf tranPtr) ++ " and alignment " ++ show (alignment tranPtr)
   free movePtr
   free newState
   free tranPtr
 
 -- State functions
 foreign export ccall "state_type" stateType :: Ptr StateC -> IO Int
-stateType :: Ptr StateC -> IO Int
 stateType statePtr = do
   state <- peek statePtr
   return $ case state of
@@ -249,7 +226,6 @@ stateType statePtr = do
     StateC {} -> 2
 
 foreign export ccall "state_name" stateName :: Ptr StateC -> IO CString
-stateName :: Ptr StateC -> IO CString
 stateName statePtr = do
   state <- peek statePtr
   return $ case state of
@@ -257,16 +233,57 @@ stateName statePtr = do
     RejectC name -> name
     StateC name _ _ _ -> name
 
+foreign export ccall "state_is_initial" stateInitial :: Ptr StateC -> IO Bool
+stateInitial statePtr = do
+  state <- peek statePtr
+  return $ case state of
+    StateC _ True _ _ -> True
+    _ -> False
+
+foreign export ccall "state_tr_len" stateTransitionsLength :: Ptr StateC -> IO Int
+stateTransitionsLength statePtr = do
+  state <- peek statePtr
+  return $ case state of
+    StateC _ _ n _ -> n
+    _ -> 0
+
+foreign export ccall "state_transitions" stateTransitionsPtr :: Ptr StateC -> IO (Ptr [Ptr TransitionC])
+stateTransitionsPtr statePtr = 
+  peek $ castPtr statePtr `plusPtr`
+          ( sizeOf (undefined :: Int)
+          + sizeOf (undefined :: Ptr CString)
+          + sizeOf (undefined :: Bool)
+          + sizeOf (undefined :: Int) )
+
+foreign export ccall "state_transition_i" stateTransitionI :: Ptr (Ptr TransitionC) -> Int -> IO (Ptr TransitionC)
+stateTransitionI = peekElemOff
+
+foreign export ccall "free_state" freeState :: Ptr StateC -> IO ()
+freeState statePtr = do
+  state <- peek statePtr
+  case state of
+    AcceptC namePtr -> free namePtr
+    RejectC namePtr -> free namePtr
+    StateC namePtr _ _ transitions -> do
+      forM_ transitions freeTransition
+      transitionArray <- peek $ castPtr statePtr `plusPtr`
+            ( sizeOf (undefined :: Int)
+            + sizeOf (undefined :: Ptr CString)
+            + sizeOf (undefined :: Bool)
+            + sizeOf (undefined :: Int) )
+      free transitionArray
+      free namePtr
+  free statePtr
+
+
 -- Test functions
 foreign export ccall "test_transition" testTransition :: Int -> IO (Ptr TransitionC)
-testTransition :: Int -> IO (Ptr TransitionC)
 testTransition n = new.encryptTransition $
-  map (\tr -> let (Just (_, Right transition)) = runParser transitionPE (Leftover tr 0 0) in transition) 
+  map (\tr -> let (Just (_, Right transition)) = runParser transitionPE (Leftover tr 0 0) in transition)
   [transition1, transition2]
   !! (n - 1)
 
 foreign export ccall "test_state" testState :: Int -> IO (Ptr StateC)
-testState :: Int -> IO (Ptr StateC)
 testState n = new.encryptState $
   map(\st -> let (Just (_, Right state)) = runParser statePE (Leftover st 0 0) in state)
   [state1, state2, state3, state4]
@@ -274,7 +291,6 @@ testState n = new.encryptState $
 
 -- Result functions
 foreign export ccall "result_type" resultType :: Ptr Result -> IO Int
-resultType :: Ptr Result -> IO Int
 resultType resPtr = do
   result <- peek resPtr
   case result of
@@ -282,15 +298,12 @@ resultType resPtr = do
     Err _ -> return 1
 
 foreign export ccall "return_error" returnError :: Ptr Result -> IO CString
-returnError :: Ptr Result -> IO CString
 returnError resPtr = do
   (Err (Error e)) <- peek resPtr
   newCString e
 
 foreign export ccall parse :: CString -> IO (Ptr Result)
-parse :: CString -> IO (Ptr Result)
 parse _ = new $ (Err . Error) "hello, I am an error"
 
 foreign export ccall "clean_up" cleanUp :: IO ()
-cleanUp :: IO()
 cleanUp = System.Mem.performGC

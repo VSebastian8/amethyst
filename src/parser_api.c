@@ -1,5 +1,5 @@
 #include "HsFFI.h"
-
+#include <stdbool.h>
 // Haskell environment function
 void initialize_haskell()
 {
@@ -25,6 +25,11 @@ extern void free_transition(const int *transition);
 // State functions
 extern int state_type(const int *state);
 extern char *state_name(const int *state);
+extern bool state_is_initial(const int *state);
+extern int state_tr_len(const int *state);
+extern int *state_transitions(const int *state);
+extern int *state_transition_i(const int *transitions, int i);
+extern void free_state(const int *state);
 // Test functions
 extern int *test_transition(int n);
 extern int *test_state(int n);
