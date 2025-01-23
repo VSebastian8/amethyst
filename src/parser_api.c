@@ -30,9 +30,16 @@ extern int state_tr_len(const int *state);
 extern int *state_transitions(const int *state);
 extern int *state_transition_i(const int *transitions, int i);
 extern void free_state(const int *state);
+// Macro functions
+extern int macro_type(const int *macro);
+// Automata functions
+extern int automata_type(const int *automata);
+extern char *automata_name(const int *automata);
 // Test functions
 extern int *test_transition(int n);
 extern int *test_state(int n);
+extern int *test_macro(int n);
+extern int *test_machine(int n);
 // Result functions
 extern int *result_type(const int *result);
 extern char *return_error(const int *error);

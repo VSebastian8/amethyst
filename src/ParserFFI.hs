@@ -10,16 +10,35 @@ import SyntaxExamples
 import Foreign
 import Foreign.C.String (CString, newCString, peekCString)
 import Control.Monad (zipWithM_, forM_, forM)
-import System.IO.Unsafe (unsafePerformIO)
+import System.IO.Unsafe (unsafePerformIO, unsafeDupablePerformIO)
 import qualified System.Mem
 import Distribution.TestSuite (TestInstance(name))
+import Language.Haskell.TH (doublePrimL)
 
--- Type sent to Rust
+-- Types for the C API
 data Result = Prog {getProgram :: !Program} | Err {getError :: !Error}
 
 data TransitionC = TransitionC !Char !Char !(Ptr Move) !CString
 
-data StateC = AcceptC !CString | RejectC !CString | StateC !CString !Bool !Int ![Ptr TransitionC]
+data StateC 
+  = AcceptC !CString 
+  | RejectC !CString 
+  | StateC !CString !Bool !Int ![Ptr TransitionC]
+
+data MacroKeywordC 
+  = ComplementC !CString
+  | IntersectC ![CString]
+  | ReunionC ![CString]
+  | ChainC ![CString]
+  | RepeatC !Int !CString
+  | MoveC !(Ptr Move) !Int
+  | OverrideC !(Ptr Move) !Int !Char
+  | PlaceC !CString
+  | ShiftC !(Ptr Move) !Int
+
+data AutomataC
+  = MachineC !CString ![(CString, CString)] ![Ptr StateC]
+  | MacroC !CString !(Ptr MacroKeywordC)
 
 -- Storable instances for all syntax data types
 instance Storable Move where
@@ -115,21 +134,47 @@ instance Storable StateC where
         return $ StateC stateName isInitial len transitions
       _ -> undefined
 
-instance Storable MacroKeyword where
-  sizeOf _ = sizeOf (undefined :: Ptr MacroKeyword)
-  alignment _ = sizeOf (undefined :: Ptr MacroKeyword)
-  poke ptr macro = undefined
-  peek ptr = undefined
+instance Storable MacroKeywordC where
+  sizeOf _ = sizeOf (undefined :: Ptr MacroKeywordC)
+  alignment _ = alignment (undefined :: Ptr MacroKeywordC)
+  poke ptr macro = case macro of
+    ComplementC {} -> poke (castPtr ptr :: Ptr Int) 0
+    IntersectC {} -> poke (castPtr ptr :: Ptr Int) 1
+    ReunionC {} -> poke (castPtr ptr :: Ptr Int) 2
+    ChainC {} -> poke (castPtr ptr :: Ptr Int) 3
+    RepeatC {} -> poke (castPtr ptr :: Ptr Int) 4
+    MoveC {} -> poke (castPtr ptr :: Ptr Int) 5
+    OverrideC {} -> poke (castPtr ptr :: Ptr Int) 6
+    PlaceC {} -> poke (castPtr ptr :: Ptr Int) 7
+    ShiftC {} -> poke (castPtr ptr :: Ptr Int) 8
+  peek ptr = do
+    tag <- peek (castPtr ptr :: Ptr Int)
+    return $ case tag of
+      0 -> undefined
+      1 -> undefined
+      2 -> undefined
+      3 -> undefined
+      4 -> undefined
+      5 -> undefined
+      6 -> undefined
+      7 -> undefined
+      8 -> undefined
+      _ -> undefined
 
-instance Storable Automata where
-  sizeOf _ = sizeOf (undefined :: Ptr Automata)
-  alignment  _ = alignment  (undefined :: Ptr Automata)
+instance Storable AutomataC where
+  sizeOf _ = sizeOf (undefined :: Ptr AutomataC)
+  alignment  _ = alignment  (undefined :: Ptr AutomataC)
   poke ptr automata = do
     case automata of
-      Machine {} -> poke (castPtr ptr :: Ptr Int) 0
-      Macro {} -> poke (castPtr ptr :: Ptr Int) 1
+      MachineC {} -> poke (castPtr ptr :: Ptr Int) 0
+      MacroC {} -> poke (castPtr ptr :: Ptr Int) 1
     -- pokeElemOff autom
-  peek ptr = undefined
+  peek ptr = do
+    tag <- peek (castPtr ptr :: Ptr Int)
+    return $ case tag of
+      0 -> undefined
+      1 -> undefined
+      _ -> undefined
 
 instance Storable Program where
   sizeOf _ = sizeOf (undefined :: Ptr Program)
@@ -178,6 +223,28 @@ encryptState (State name transitions initial) =
   let stateName = unsafePerformIO $ newCString name
       transitionArray = map (unsafePerformIO . new . encryptTransition) transitions
   in StateC stateName initial (length transitions) transitionArray
+
+encryptMacro :: MacroKeyword -> MacroKeywordC
+encryptMacro (Complement automata) = ComplementC (unsafePerformIO $ newCString automata)
+encryptMacro (Intersect automataList) = IntersectC (map (unsafePerformIO.newCString) automataList)
+encryptMacro (Reunion automataList) = ReunionC (map (unsafePerformIO.newCString) automataList)
+encryptMacro (Chain automataList) = ChainC (map (unsafePerformIO.newCString) automataList)
+encryptMacro (Repeat number automata) = RepeatC number (unsafePerformIO $ newCString automata)
+encryptMacro (Move move number) = MoveC (unsafePerformIO $ new move) number
+encryptMacro (Override move number symbol) = OverrideC (unsafePerformIO $ new move) number symbol
+encryptMacro (Place text) = PlaceC (unsafePerformIO $ newCString  text)
+encryptMacro (Shift move number) = ShiftC (unsafePerformIO $ new move) number
+
+encryptAutomata :: Automata -> AutomataC
+encryptAutomata (Machine name components states) = 
+  let machineName = unsafePerformIO $ newCString name
+      machineComponents = map (\(s1,s2) -> (unsafePerformIO $ newCString s1,  unsafePerformIO $ newCString s2)) components
+      machineStates = map (unsafePerformIO . new . encryptState) states
+  in MachineC machineName machineComponents machineStates
+encryptAutomata (Macro name keyword) = 
+  let macroName = unsafePerformIO $ newCString name
+      macroKeyword = unsafePerformIO $ new $ encryptMacro keyword
+  in MacroC macroName macroKeyword
 
 -- Functions exposed through the C api
 foreign export ccall "move_type" moveType :: Ptr Move -> IO Int
@@ -275,6 +342,35 @@ freeState statePtr = do
       free namePtr
   free statePtr
 
+-- Macro functions
+foreign export ccall "macro_type" macroType :: Ptr MacroKeywordC -> IO Int
+macroType macroPtr = do
+  macro <- peek macroPtr
+  return $ case macro of
+    ComplementC {} -> 0
+    IntersectC {} -> 1
+    ReunionC {} -> 2
+    ChainC {} -> 3
+    RepeatC {} -> 4
+    MoveC {} -> 5
+    OverrideC {} -> 6
+    PlaceC {} -> 7
+    ShiftC {} -> 8
+
+-- Automata functions
+foreign export ccall "automata_type" automataType :: Ptr AutomataC -> IO Int
+automataType autoPtr = do
+  automata <- peek autoPtr
+  return $ case automata of
+    MachineC {} -> 0
+    MacroC {} -> 1
+
+foreign export ccall "automata_name" automataName :: Ptr AutomataC -> IO CString
+automataName autoPtr = do
+  automata <- peek autoPtr
+  return $ case automata of
+    MachineC name _ _ -> name
+    MacroC name _ -> name
 
 -- Test functions
 foreign export ccall "test_transition" testTransition :: Int -> IO (Ptr TransitionC)
@@ -287,6 +383,18 @@ foreign export ccall "test_state" testState :: Int -> IO (Ptr StateC)
 testState n = new.encryptState $
   map(\st -> let (Just (_, Right state)) = runParser statePE (Leftover st 0 0) in state)
   [state1, state2, state3, state4]
+  !! (n - 1)
+
+foreign export ccall "test_macro" testMacro :: Int -> IO (Ptr AutomataC)
+testMacro n = new.encryptAutomata $
+  map(\mc -> let (Just (_, Right macro)) = runParser macroPE (Leftover mc 0 0) in macro)
+  [macro1, macro2, macro3, macro4, macro5, macro6, macro7, macro8, macro9, macro10, macro11]
+  !! (n - 1)
+
+foreign export ccall "test_machine" testMachine :: Int -> IO (Ptr AutomataC)
+testMachine n = new.encryptAutomata $
+  map(\mc -> let (Just (_, Right machine)) = runParser machinePE (Leftover mc 0 0) in machine)
+  [auto1, auto2, auto3]
   !! (n - 1)
 
 -- Result functions

@@ -22,6 +22,11 @@ extern "C" {
     fn state_tr_len(state_ptr: *mut i32) -> i32;
     fn state_transitions(state_ptr: *mut i32) -> *mut i32;
     fn state_transition_i(transitions_ptr: *mut i32, i: i32) -> *mut i32;
+    // Macro functions
+    fn macro_type(macro_ptr: *mut i32) -> i32;
+    // Automata functions
+    fn automata_type(automata_ptr: *mut i32) -> i32;
+    fn automata_name(automata_ptr: *mut i32) -> *mut c_char;
     // Result functions
     fn result_type(res: *mut i32) -> i32;
     fn return_error(res: *mut i32) -> *mut c_char;
@@ -90,6 +95,28 @@ pub fn parse_state(state_ptr: *mut i32) -> StateType {
                 )
             }
             _ => panic!("Unexpected state type"),
+        }
+    }
+}
+
+pub fn parse_macro(macro_ptr: *mut i32) -> MacroType {
+    todo!()
+}
+
+pub fn parse_machine(machine_ptr: *mut i32) -> Machine {
+    todo!()
+}
+
+pub fn parse_automata(automata_ptr: *mut i32) -> AutomataType {
+    unsafe {
+        let automata_name = CStr::from_ptr(automata_name(automata_ptr))
+            .to_str()
+            .expect("Error converting CString to String")
+            .to_owned();
+        match automata_type(automata_ptr) {
+            0 => AutomataType::Macro(automata_name, parse_macro(automata_ptr)),
+            1 => AutomataType::Machine(automata_name, parse_machine(automata_ptr)),
+            _ => panic!("Unexpected automata type"),
         }
     }
 }
