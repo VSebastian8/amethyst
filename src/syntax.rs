@@ -1,11 +1,11 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Move {
     Left,
     Right,
     Neutral,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Transition {
     pub read_symbol: char,
     pub write_symbol: char,
@@ -13,13 +13,13 @@ pub struct Transition {
     pub new_state: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct State {
     pub transitions: Box<Vec<Transition>>,
     pub initial: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum StateType {
     Accept(String),
     Reject(String),

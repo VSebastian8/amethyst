@@ -14,6 +14,8 @@ use serial_test::serial;
 
 #[cfg(test)]
 mod tests {
+    use amethyst::syntax::{Move, State, StateType, Transition};
+
     use super::*;
 
     #[ctor::ctor]
@@ -39,7 +41,16 @@ mod tests {
             let transition_ptr = test_transition(1);
             let transition = parse_transition(transition_ptr);
             free_transition(transition_ptr);
-            println!("{:?}", transition);
+            print!("{:?}", transition);
+            assert_eq!(
+                transition,
+                Transition {
+                    read_symbol: 'A',
+                    write_symbol: 'B',
+                    move_symbol: Move::Right,
+                    new_state: "qstare".to_owned()
+                }
+            )
         }
     }
 
@@ -50,7 +61,16 @@ mod tests {
             let transition_ptr = test_transition(2);
             let transition = parse_transition(transition_ptr);
             free_transition(transition_ptr);
-            println!("{:?}", transition);
+            print!("{:?}", transition);
+            assert_eq!(
+                transition,
+                Transition {
+                    read_symbol: 'X',
+                    write_symbol: '_',
+                    move_symbol: Move::Neutral,
+                    new_state: "q2".to_owned()
+                }
+            )
         }
     }
 
@@ -61,7 +81,22 @@ mod tests {
             let state_ptr = test_state(1);
             let state = parse_state(state_ptr);
             free_state(state_ptr);
-            println!("{:?}", state);
+            print!("{:?}", state);
+            assert_eq!(
+                state,
+                StateType::State(
+                    "nume".to_owned(),
+                    State {
+                        initial: true,
+                        transitions: Box::new(vec![Transition {
+                            read_symbol: 'B',
+                            write_symbol: 'B',
+                            move_symbol: Move::Left,
+                            new_state: "nume".to_owned()
+                        }])
+                    }
+                )
+            )
         }
     }
 
@@ -72,7 +107,8 @@ mod tests {
             let state_ptr = test_state(2);
             let state = parse_state(state_ptr);
             free_state(state_ptr);
-            println!("{:?}", state);
+            print!("{:?}", state);
+            assert_eq!(state, StateType::Accept("okk".to_owned(),))
         }
     }
 
@@ -83,7 +119,8 @@ mod tests {
             let state_ptr = test_state(3);
             let state = parse_state(state_ptr);
             free_state(state_ptr);
-            println!("{:?}", state);
+            print!("{:?}", state);
+            assert_eq!(state, StateType::Reject("nu_ok".to_owned(),))
         }
     }
 
@@ -93,8 +130,31 @@ mod tests {
         unsafe {
             let state_ptr = test_state(4);
             let state = parse_state(state_ptr);
-            // free_state(state_ptr);
-            println!("{:?}", state);
+            free_state(state_ptr);
+            print!("{:?}", state);
+            assert_eq!(
+                state,
+                StateType::State(
+                    "renume".to_owned(),
+                    State {
+                        initial: false,
+                        transitions: Box::new(vec![
+                            Transition {
+                                read_symbol: 'A',
+                                write_symbol: 'A',
+                                move_symbol: Move::Neutral,
+                                new_state: "nume".to_owned()
+                            },
+                            Transition {
+                                read_symbol: 'H',
+                                write_symbol: 'B',
+                                move_symbol: Move::Right,
+                                new_state: "renume".to_owned()
+                            }
+                        ])
+                    }
+                )
+            )
         }
     }
 }
