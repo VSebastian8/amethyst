@@ -35,7 +35,7 @@ macro7 = "automata move2l = move(L, 2);"
 macro8 = "automata rescriere = override(L, 5, 'V');"
 macro9 = "automata scriere = place(\"ABCDE\");"
 macro10 = "automata insert8 = shift(R, 8);"
-macro11= "automata delete9 = shift(L, 8);"
+macro11= "automata delete19 = shift(L, 19);"
 macro12 = "automata bad = repeat(hello);" -- error expected number
 macro13 = "automata bad = move(3, L);" -- error expected move
 macro14 = "automata ch = chain();" -- error expected machine type
@@ -47,9 +47,9 @@ automata luck = random(q0, q1, q2, 2, 3, 4); -- state names and weights, this on
 -}
 
 -- Automata examples
-auto1, auto2, auto3, auto4, auto5, auto6, auto7, auto8 :: String
-auto1 = "automata or(){initial state q0 {0 / 0, R -> q0; 1 / 1 , R -> q1; _ / _ , N -> f;} state q1 {0 / 1 , R -> q1; 1 / 1 , N -> q1; _ / _, N -> f;} accept state f;}"
-auto2 = "automata even(){\n\ 
+machine1, machine2, machine3, machine4, machine5, machine6, machine7, machine8 :: String
+machine1 = "automata or(){initial state q0 {0 / 0, R -> q0; 1 / 1 , R -> q1; _ / _ , N -> f;} state q1 {0 / 1 , R -> q1; 1 / 1 , N -> q1; _ / _, N -> f;} accept state f;}"
+machine2 = "automata even(){\n\ 
 \   initial state even {\n\
 \      0 / 0, R -> even;\n\
 \      1 / 1, R -> odd;\n\
@@ -63,7 +63,7 @@ auto2 = "automata even(){\n\
 \   accept state true;\n\
 \   reject state false;\n\
 \}"
-auto3 = "automata two_even(even first, even second) {\n\
+machine3 = "automata two_even(even first, even second) {\n\
 \       initial state q0{\n\
 \           B / B, R -> first.even;\n\
 \           _ / _, N -> first.even;\n\
@@ -77,17 +77,17 @@ auto3 = "automata two_even(even first, even second) {\n\
 \       accept state true;\n\
 \       reject state false;\n\
 \}"
-auto4 = "\
+machine4 = "\
 \automata my_mach(){\n\
 \   initial state q0{\n\
 \       A / @ , R -> qstare X / Y , R -> qstare2;\
 \   }\n\
 \}\n\
 \"  -- error missing ;
-auto5 = "automata (not n){}" -- error expected machine name
-auto6 = "automata hello(){}" -- error can't have 0 states
-auto7 = "automata double (not n1, not ){}" -- error expected component name
-auto8 = "automata double (, not n2){}" -- error expected component type
+machine5 = "automata (not n){}" -- error expected machine name
+machine6 = "automata hello(){}" -- error can't have 0 states
+machine7 = "automata double (not n1, not ){}" -- error expected component name
+machine8 = "automata double (, not n2){}" -- error expected component type
 
 -- A program is just a list of automatas (explicit machines and macros)
 program1, program2, program3 :: String

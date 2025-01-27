@@ -15,8 +15,8 @@ pub struct Transition {
 
 #[derive(Debug, PartialEq)]
 pub struct State {
-    pub transitions: Box<Vec<Transition>>,
     pub initial: bool,
+    pub transitions: Box<Vec<Transition>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -26,12 +26,12 @@ pub enum StateType {
     State(String, State),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum MacroType {
     Complement(String),
-    Intersect(Box<[String]>),
-    Reunion(Box<[String]>),
-    Chain(Box<[String]>),
+    Intersect(Box<Vec<String>>),
+    Reunion(Box<Vec<String>>),
+    Chain(Box<Vec<String>>),
     Repeat(i32, String),
     Move(Move, i32),
     Override(Move, i32, char),
@@ -39,19 +39,19 @@ pub enum MacroType {
     Shift(Move, i32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Machine {
-    pub components: Box<[(String, String)]>,
-    pub states: Box<[String]>,
+    pub components: Box<Vec<(String, String)>>,
+    pub states: Box<Vec<StateType>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AutomataType {
     Machine(String, Machine),
     Macro(String, MacroType),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Program {
-    pub automata: Box<[AutomataType]>,
+    pub automata: Box<Vec<AutomataType>>,
 }

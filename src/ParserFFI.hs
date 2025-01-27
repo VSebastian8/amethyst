@@ -14,30 +14,34 @@ import System.IO.Unsafe (unsafePerformIO, unsafeDupablePerformIO)
 import qualified System.Mem
 import Distribution.TestSuite (TestInstance(name))
 import Language.Haskell.TH (doublePrimL)
+import Distribution.Simple.BuildPaths (autogenComponentModulesDir)
+import Data.IntMap (size)
 
 -- Types for the C API
 data Result = Prog {getProgram :: !Program} | Err {getError :: !Error}
 
 data TransitionC = TransitionC !Char !Char !(Ptr Move) !CString
 
-data StateC 
-  = AcceptC !CString 
-  | RejectC !CString 
+data StateC
+  = AcceptC !CString
+  | RejectC !CString
   | StateC !CString !Bool !Int ![Ptr TransitionC]
 
-data MacroKeywordC 
+data MacroKeywordC
   = ComplementC !CString
-  | IntersectC ![CString]
-  | ReunionC ![CString]
-  | ChainC ![CString]
+  | IntersectC !Int ![CString]
+  | ReunionC !Int ![CString]
+  | ChainC !Int ![CString]
   | RepeatC !Int !CString
   | MoveC !(Ptr Move) !Int
   | OverrideC !(Ptr Move) !Int !Char
   | PlaceC !CString
   | ShiftC !(Ptr Move) !Int
 
+data MachineC = MachineC !Int ![(CString, CString)] !Int ![Ptr StateC]
+
 data AutomataC
-  = MachineC !CString ![(CString, CString)] ![Ptr StateC]
+  = MachC !CString !(Ptr MachineC)
   | MacroC !CString !(Ptr MacroKeywordC)
 
 -- Storable instances for all syntax data types
@@ -135,45 +139,194 @@ instance Storable StateC where
       _ -> undefined
 
 instance Storable MacroKeywordC where
-  sizeOf _ = sizeOf (undefined :: Ptr MacroKeywordC)
-  alignment _ = alignment (undefined :: Ptr MacroKeywordC)
+  sizeOf _ = 2 * sizeOf (undefined :: Int)
+               + sizeOf(undefined :: Ptr Move)
+               + sizeOf (undefined :: Char)
+  alignment _ = alignment (undefined :: Ptr CString)
   poke ptr macro = case macro of
-    ComplementC {} -> poke (castPtr ptr :: Ptr Int) 0
-    IntersectC {} -> poke (castPtr ptr :: Ptr Int) 1
-    ReunionC {} -> poke (castPtr ptr :: Ptr Int) 2
-    ChainC {} -> poke (castPtr ptr :: Ptr Int) 3
-    RepeatC {} -> poke (castPtr ptr :: Ptr Int) 4
-    MoveC {} -> poke (castPtr ptr :: Ptr Int) 5
-    OverrideC {} -> poke (castPtr ptr :: Ptr Int) 6
-    PlaceC {} -> poke (castPtr ptr :: Ptr Int) 7
-    ShiftC {} -> poke (castPtr ptr :: Ptr Int) 8
+    ComplementC automata -> do
+      poke (castPtr ptr :: Ptr Int) 0
+      poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) automata
+    IntersectC len automataList -> do
+      poke (castPtr ptr :: Ptr Int) 1
+      poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) len
+      -- List allocation (should be freed)
+      automataArray <- mallocBytes $ len * sizeOf(undefined :: Ptr CString)
+      poke (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) )) automataArray
+      forM_ (zip automataList [0..]) $ \(automata, i) -> do
+        pokeElemOff (castPtr automataArray :: Ptr CString) i automata
+    ReunionC len automataList -> do
+      poke (castPtr ptr :: Ptr Int) 2
+      poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) len
+      -- List allocation (should be freed)
+      automataArray <- mallocBytes $ len * sizeOf(undefined :: Ptr CString)
+      poke (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) )) automataArray
+      forM_ (zip automataList [0..]) $ \(automata, i) -> do
+        pokeElemOff (castPtr automataArray :: Ptr CString) i automata
+    ChainC len automataList -> do
+      poke (castPtr ptr :: Ptr Int) 3
+      poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) len
+      -- List allocation (should be freed)
+      automataArray <- mallocBytes $ len * sizeOf(undefined :: Ptr CString)
+      poke (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) )) automataArray
+      forM_ (zip automataList [0..]) $ \(automata, i) -> do
+              pokeElemOff (castPtr automataArray :: Ptr CString) i automata
+    RepeatC number automata -> do
+      poke (castPtr ptr :: Ptr Int) 4
+      poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) number
+      poke (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) )) automata
+    MoveC move number -> do
+      poke (castPtr ptr :: Ptr Int) 5
+      poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) move
+      poke (castPtr ptr `plusPtr`
+          ( sizeOf(undefined :: Int)
+          + sizeOf(undefined :: Ptr Move) )) number
+    OverrideC move number symbol -> do
+      poke (castPtr ptr :: Ptr Int) 6
+      poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) move
+      poke (castPtr ptr `plusPtr`
+          ( sizeOf(undefined :: Int)
+          + sizeOf(undefined :: Ptr Move) )) number
+      poke (castPtr ptr `plusPtr`
+          ( 2 * sizeOf(undefined :: Int)
+          + sizeOf(undefined :: Ptr Move) )) symbol
+    PlaceC text -> do
+      poke (castPtr ptr :: Ptr Int) 7
+      poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) text
+    ShiftC move number -> do
+      poke (castPtr ptr :: Ptr Int) 8
+      poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) move
+      poke (castPtr ptr `plusPtr`
+          ( sizeOf(undefined :: Int)
+          + sizeOf(undefined :: Ptr Move) )) number
   peek ptr = do
     tag <- peek (castPtr ptr :: Ptr Int)
-    return $ case tag of
-      0 -> undefined
-      1 -> undefined
-      2 -> undefined
-      3 -> undefined
-      4 -> undefined
-      5 -> undefined
-      6 -> undefined
-      7 -> undefined
-      8 -> undefined
+    case tag of
+      0 -> do
+        automata <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
+        return $ ComplementC automata
+      1 -> do
+        len <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
+        automataArray <-  peek (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) ))
+        automataList <- forM [0..len - 1] $ \i ->
+            peekElemOff (castPtr automataArray :: Ptr CString) i
+        return $ IntersectC len automataList
+      2 -> do
+        len <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
+        automataArray <-  peek (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) ))
+        automataList <- forM [0..len - 1] $ \i ->
+            peekElemOff (castPtr automataArray :: Ptr CString) i
+        return $ ReunionC len automataList
+      3 -> do
+        len <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
+        automataArray <- peek (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) ))
+        automataList <- forM [0..len - 1] $ \i ->
+            peekElemOff (castPtr automataArray :: Ptr CString) i
+        return $ ChainC len automataList
+      4 -> do
+        number <- peek (castPtr ptr `plusPtr` sizeOf(undefined :: Int))
+        automata <- peek (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) ))
+        return $ RepeatC number automata
+      5 -> do
+        move <- peek (castPtr ptr `plusPtr` sizeOf(undefined :: Int))
+        number <- peek (castPtr ptr `plusPtr`
+            ( sizeOf(undefined :: Int)
+            + sizeOf(undefined :: Ptr Move) ))
+        return $ MoveC move number
+      6 -> do
+        move <- peek (castPtr ptr `plusPtr` sizeOf(undefined :: Int))
+        number <- peek (castPtr ptr `plusPtr`
+            ( sizeOf(undefined :: Int)
+            + sizeOf(undefined :: Ptr Move) ))
+        symbol <- peek (castPtr ptr `plusPtr`
+            ( 2 * sizeOf(undefined :: Int)
+            + sizeOf(undefined :: Ptr Move) ))
+        return $ OverrideC move number symbol
+      7 -> do
+        text <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
+        return $ PlaceC text
+      8 -> do
+        move <- peek (castPtr ptr `plusPtr` sizeOf(undefined :: Int))
+        number <- peek (castPtr ptr `plusPtr`
+          ( sizeOf(undefined :: Int)
+          + sizeOf(undefined :: Ptr Move) ))
+        return $ ShiftC move number
       _ -> undefined
 
+instance Storable MachineC where
+  sizeOf _ = 2 * sizeOf(undefined :: Int)
+               + sizeOf(undefined :: Ptr (Ptr CString))
+               + sizeOf(undefined :: Ptr (Ptr StateC))
+  alignment  _ = alignment  (undefined :: Ptr (Ptr CString))
+  poke ptr (MachineC len1 components len2 states) = do
+      -- Components list
+      poke (castPtr ptr :: Ptr Int) len1
+      componentsArray <- mallocBytes $ len1 * 2 * sizeOf (undefined :: Ptr CString)
+      poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) componentsArray
+      forM_ (zip components [0,2..]) $ \((compType, compName), i) -> do
+        pokeElemOff (castPtr componentsArray :: Ptr CString) i compType
+        pokeElemOff (castPtr componentsArray :: Ptr CString) (i + 1) compName
+      -- States list
+      poke (castPtr ptr `plusPtr`
+          ( sizeOf(undefined :: Int)
+          + sizeOf(undefined :: Ptr (Ptr CString)) )) len2
+      statesArray <- mallocBytes $ len2 * sizeOf (undefined :: Ptr StateC)
+      poke (castPtr ptr `plusPtr`
+          ( 2 * sizeOf(undefined :: Int)
+          + sizeOf(undefined :: Ptr (Ptr CString)) )) statesArray
+      forM_ (zip states [0..]) $ \(state, i) -> do
+        pokeElemOff (castPtr statesArray :: Ptr (Ptr StateC)) i state
+  peek ptr = do
+      -- Components list
+      len1 <- peek (castPtr ptr :: Ptr Int)
+      componentsArray <- peek (castPtr ptr `plusPtr` sizeOf(undefined :: Int))
+      components <- forM [0..(len1 - 1)] $ \i -> do
+        compType <- peekElemOff (castPtr componentsArray :: Ptr CString) (i * 2)
+        compName <- peekElemOff (castPtr componentsArray :: Ptr CString) (i * 2 + 1)
+        return (compType, compName)
+      -- States list
+      len2 <- peek (castPtr ptr `plusPtr`
+            ( sizeOf(undefined :: Int)
+            + sizeOf(undefined :: Ptr (Ptr CString)) ))
+      statesArray <- peek (castPtr ptr `plusPtr`
+            ( 2 * sizeOf(undefined :: Int)
+            + sizeOf(undefined :: Ptr (Ptr CString)) ))
+      states <- forM [0..(len2 - 1)] $ \i -> peekElemOff (castPtr statesArray :: Ptr (Ptr StateC)) i
+      return $ MachineC len1 components len2 states
+
+
 instance Storable AutomataC where
-  sizeOf _ = sizeOf (undefined :: Ptr AutomataC)
-  alignment  _ = alignment  (undefined :: Ptr AutomataC)
-  poke ptr automata = do
+  sizeOf _ = sizeOf (undefined :: Ptr CString) 
+       + 2 * sizeOf (undefined :: Ptr Int)
+  alignment  _ = alignment  (undefined :: Ptr CString)
+  poke ptr automata =
     case automata of
-      MachineC {} -> poke (castPtr ptr :: Ptr Int) 0
-      MacroC {} -> poke (castPtr ptr :: Ptr Int) 1
-    -- pokeElemOff autom
+      MachC name machine -> do
+        poke (castPtr ptr :: Ptr Int) 0
+        poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) name
+        poke (castPtr ptr `plusPtr` 
+            ( sizeOf (undefined :: Int) 
+            + sizeOf (undefined :: Ptr CString) )) machine
+      MacroC name keyword  -> do
+        poke (castPtr ptr :: Ptr Int) 1
+        poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) name
+        poke (castPtr ptr `plusPtr` 
+            ( sizeOf (undefined :: Int) 
+            + sizeOf (undefined :: Ptr CString) )) keyword
   peek ptr = do
     tag <- peek (castPtr ptr :: Ptr Int)
-    return $ case tag of
-      0 -> undefined
-      1 -> undefined
+    name <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
+    case tag of
+      0 -> do
+        machine <- peek (castPtr ptr `plusPtr` 
+          ( sizeOf (undefined :: Int) 
+          + sizeOf (undefined :: Ptr CString) ))
+        return $ MachC name machine
+      1 -> do
+        keyword <- peek (castPtr ptr `plusPtr` 
+          ( sizeOf (undefined :: Int) 
+          + sizeOf (undefined :: Ptr CString) ))
+        return $ MacroC name keyword
       _ -> undefined
 
 instance Storable Program where
@@ -226,9 +379,9 @@ encryptState (State name transitions initial) =
 
 encryptMacro :: MacroKeyword -> MacroKeywordC
 encryptMacro (Complement automata) = ComplementC (unsafePerformIO $ newCString automata)
-encryptMacro (Intersect automataList) = IntersectC (map (unsafePerformIO.newCString) automataList)
-encryptMacro (Reunion automataList) = ReunionC (map (unsafePerformIO.newCString) automataList)
-encryptMacro (Chain automataList) = ChainC (map (unsafePerformIO.newCString) automataList)
+encryptMacro (Intersect automataList) = IntersectC (length automataList) (map (unsafePerformIO.newCString) automataList)
+encryptMacro (Reunion automataList) = ReunionC (length automataList) (map (unsafePerformIO.newCString) automataList)
+encryptMacro (Chain automataList) = ChainC (length automataList) (map (unsafePerformIO.newCString) automataList)
 encryptMacro (Repeat number automata) = RepeatC number (unsafePerformIO $ newCString automata)
 encryptMacro (Move move number) = MoveC (unsafePerformIO $ new move) number
 encryptMacro (Override move number symbol) = OverrideC (unsafePerformIO $ new move) number symbol
@@ -236,12 +389,12 @@ encryptMacro (Place text) = PlaceC (unsafePerformIO $ newCString  text)
 encryptMacro (Shift move number) = ShiftC (unsafePerformIO $ new move) number
 
 encryptAutomata :: Automata -> AutomataC
-encryptAutomata (Machine name components states) = 
+encryptAutomata (Machine name components states) =
   let machineName = unsafePerformIO $ newCString name
       machineComponents = map (\(s1,s2) -> (unsafePerformIO $ newCString s1,  unsafePerformIO $ newCString s2)) components
       machineStates = map (unsafePerformIO . new . encryptState) states
-  in MachineC machineName machineComponents machineStates
-encryptAutomata (Macro name keyword) = 
+  in MachC machineName (unsafePerformIO.new $ MachineC (length components) machineComponents (length states) machineStates)
+encryptAutomata (Macro name keyword) =
   let macroName = unsafePerformIO $ newCString name
       macroKeyword = unsafePerformIO $ new $ encryptMacro keyword
   in MacroC macroName macroKeyword
@@ -315,7 +468,7 @@ stateTransitionsLength statePtr = do
     _ -> 0
 
 foreign export ccall "state_transitions" stateTransitionsPtr :: Ptr StateC -> IO (Ptr [Ptr TransitionC])
-stateTransitionsPtr statePtr = 
+stateTransitionsPtr statePtr =
   peek $ castPtr statePtr `plusPtr`
           ( sizeOf (undefined :: Int)
           + sizeOf (undefined :: Ptr CString)
@@ -357,20 +510,163 @@ macroType macroPtr = do
     PlaceC {} -> 7
     ShiftC {} -> 8
 
+foreign export ccall "macro_string" macroString :: Ptr MacroKeywordC -> IO CString
+macroString macroPtr = do
+  macro <- peek macroPtr
+  return $ case macro of
+    ComplementC automata -> automata
+    RepeatC _ automata -> automata
+    PlaceC text -> text
+    _ -> undefined
+
+foreign export ccall "macro_number" macroNumber :: Ptr MacroKeywordC -> IO Int
+macroNumber macroPtr = do
+  macro <- peek macroPtr
+  return $ case macro of
+    RepeatC n _ -> n
+    MoveC _ n -> n
+    OverrideC _ n _ -> n
+    ShiftC _ n -> n
+    _ -> undefined
+
+foreign export ccall "macro_move" macroMove :: Ptr MacroKeywordC -> IO (Ptr Move)
+macroMove macroPtr = do
+  macro <- peek macroPtr
+  return $ case macro of
+    MoveC m _ -> m
+    OverrideC m _ _ -> m
+    ShiftC m _ -> m
+    _ -> undefined
+
+foreign export ccall "macro_symbol" macroSymbol :: Ptr MacroKeywordC -> IO Char
+macroSymbol macroPtr = do
+  macro <- peek macroPtr
+  return $ case macro of
+    OverrideC _ _ c -> c
+    _ -> undefined
+
+foreign export ccall "macro_list_len" macroListLen :: Ptr MacroKeywordC -> IO Int
+macroListLen macroPtr = do
+  macro <- peek macroPtr
+  return $ case macro of
+    IntersectC len _ -> len
+    ReunionC len _ -> len
+    ChainC len _ -> len
+    _ -> undefined
+
+foreign export ccall "macro_list" macroList :: Ptr MacroKeywordC -> IO (Ptr [CString])
+macroList macroPtr =
+  peek $ castPtr macroPtr `plusPtr` (2 * sizeOf(undefined :: Int))
+
+foreign export ccall "macro_list_i" macroListI :: Ptr (Ptr CString) -> Int -> IO (Ptr CString)
+macroListI = peekElemOff
+
+freeMacro :: Ptr MacroKeywordC -> IO()
+freeMacro macroPtr = do
+  macro <- peek macroPtr
+  case macro of
+    ComplementC automata -> free automata
+    IntersectC _ automataList -> do
+      forM_ automataList free
+      automataArray <- peek (castPtr macroPtr `plusPtr` (2 * sizeOf(undefined :: Int)))
+      free automataArray
+    ReunionC _ automataList -> do
+      forM_ automataList free
+      automataArray <- peek (castPtr macroPtr `plusPtr` (2 * sizeOf(undefined :: Int)))
+      free automataArray
+    ChainC _ automataList -> do
+      forM_ automataList free
+      automataArray <- peek (castPtr macroPtr `plusPtr` (2 * sizeOf(undefined :: Int)))
+      free automataArray
+    RepeatC _ automata -> free automata
+    MoveC move _ -> free move
+    OverrideC move _ _ -> free move
+    PlaceC text -> free text
+    ShiftC move _ -> free move
+  free macroPtr
+
+-- Machine functions
+foreign export ccall "machine_components_len" machineComponentsLen :: Ptr MachineC -> IO Int
+machineComponentsLen machinePtr = do
+  (MachineC len1 _ _ _) <- peek machinePtr
+  return len1
+
+foreign export ccall "machine_components" machineComponents :: Ptr MachineC -> IO (Ptr [CString])
+machineComponents machinePtr = peek $ castPtr machinePtr `plusPtr` sizeOf(undefined :: Int)
+
+foreign export ccall "machine_components_i_first" machineComponentsFirst :: Ptr (Ptr CString) -> Int -> IO (Ptr CString)
+machineComponentsFirst machinePtr i = peekElemOff machinePtr (i * 2)
+
+foreign export ccall "machine_components_i_second" machineComponentsSecond :: Ptr (Ptr CString) -> Int -> IO (Ptr CString)
+machineComponentsSecond machinePtr i = peekElemOff machinePtr (i * 2 + 1)
+
+foreign export ccall "machine_states_len" machineStatesLen :: Ptr MachineC -> IO Int
+machineStatesLen machinePtr = do
+  (MachineC _ _ len2 _) <- peek machinePtr
+  return len2
+
+foreign export ccall "machine_states" machineStates :: Ptr MachineC -> IO (Ptr [StateC])
+machineStates machinePtr = peek $ castPtr machinePtr `plusPtr` ( 2 * sizeOf(undefined :: Int) + sizeOf(undefined :: Ptr (Ptr CString)) )
+
+foreign export ccall "machine_states_i" machineStateI :: Ptr (Ptr StateC) -> Int -> IO (Ptr StateC)
+machineStateI = peekElemOff
+
+freeMachine :: Ptr MachineC -> IO()
+freeMachine machinePtr = do
+  (MachineC _ components _ states) <- peek machinePtr
+  forM_ components $ \(compType, compName) -> do
+    free compType
+    free compName
+  forM_ states freeState
+  -- Free the array pointers
+  componentsArray <- peek (castPtr machinePtr `plusPtr` sizeOf(undefined :: Int))
+  statesArray <- peek (castPtr machinePtr `plusPtr`
+          ( 2 * sizeOf(undefined :: Int)
+          + sizeOf(undefined :: Ptr (Ptr CString)) ))
+  free componentsArray
+  free statesArray
+  free machinePtr
+
 -- Automata functions
 foreign export ccall "automata_type" automataType :: Ptr AutomataC -> IO Int
 automataType autoPtr = do
   automata <- peek autoPtr
   return $ case automata of
-    MachineC {} -> 0
+    MachC {} -> 0
     MacroC {} -> 1
 
 foreign export ccall "automata_name" automataName :: Ptr AutomataC -> IO CString
 automataName autoPtr = do
   automata <- peek autoPtr
   return $ case automata of
-    MachineC name _ _ -> name
+    MachC name _ -> name
     MacroC name _ -> name
+
+foreign export ccall "automata_machine" automataMachine :: Ptr AutomataC -> IO (Ptr MachineC)
+automataMachine machinePtr = do
+  automata <- peek machinePtr
+  return $ case automata of
+    MachC _ machine -> machine
+    MacroC {} -> undefined
+
+foreign export ccall "automata_macro" automataMacro :: Ptr AutomataC -> IO (Ptr MacroKeywordC)
+automataMacro macroPtr = do
+  automata <- peek macroPtr
+  return $ case automata of
+    MachC {} -> undefined
+    MacroC _ macro -> macro
+
+foreign export ccall "free_automata" freeAutomata :: Ptr AutomataC -> IO ()
+freeAutomata autoPtr = do
+  automata <- peek autoPtr
+  case automata of
+    MachC name machinePtr -> do
+      freeMachine machinePtr
+      free name
+    MacroC name macroPtr -> do
+      freeMacro macroPtr
+      free name
+  free autoPtr
 
 -- Test functions
 foreign export ccall "test_transition" testTransition :: Int -> IO (Ptr TransitionC)
@@ -394,7 +690,7 @@ testMacro n = new.encryptAutomata $
 foreign export ccall "test_machine" testMachine :: Int -> IO (Ptr AutomataC)
 testMachine n = new.encryptAutomata $
   map(\mc -> let (Just (_, Right machine)) = runParser machinePE (Leftover mc 0 0) in machine)
-  [auto1, auto2, auto3]
+  [machine1, machine2, machine3]
   !! (n - 1)
 
 -- Result functions

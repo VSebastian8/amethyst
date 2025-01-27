@@ -24,9 +24,26 @@ extern "C" {
     fn state_transition_i(transitions_ptr: *mut i32, i: i32) -> *mut i32;
     // Macro functions
     fn macro_type(macro_ptr: *mut i32) -> i32;
+    fn macro_string(macro_ptr: *mut i32) -> *mut c_char;
+    fn macro_number(macro_ptr: *mut i32) -> i32;
+    fn macro_move(macro_ptr: *mut i32) -> *mut i32;
+    fn macro_symbol(macro_ptr: *mut i32) -> c_char;
+    fn macro_list_len(macro_ptr: *mut i32) -> i32;
+    fn macro_list(macro_ptr: *mut i32) -> *mut i32;
+    fn macro_list_i(macro_ptr: *mut i32, i: i32) -> *mut c_char;
+    // Machine functions
+    fn machine_components_len(machine_ptr: *mut i32) -> i32;
+    fn machine_components(machine_ptr: *mut i32) -> *mut i32;
+    fn machine_components_i_first(components_ptr: *mut i32, i: i32) -> *mut c_char;
+    fn machine_components_i_second(components_ptr: *mut i32, i: i32) -> *mut c_char;
+    fn machine_states_len(machine_ptr: *mut i32) -> i32;
+    fn machine_states(machine_ptr: *mut i32) -> *mut i32;
+    fn machine_states_i(states: *mut i32, i: i32) -> *mut i32;
     // Automata functions
     fn automata_type(automata_ptr: *mut i32) -> i32;
     fn automata_name(automata_ptr: *mut i32) -> *mut c_char;
+    fn automata_machine(automata_ptr: *mut i32) -> *mut i32;
+    fn automata_macro(automata_ptr: *mut i32) -> *mut i32;
     // Result functions
     fn result_type(res: *mut i32) -> i32;
     fn return_error(res: *mut i32) -> *mut c_char;
@@ -100,11 +117,138 @@ pub fn parse_state(state_ptr: *mut i32) -> StateType {
 }
 
 pub fn parse_macro(macro_ptr: *mut i32) -> MacroType {
-    todo!()
+    unsafe {
+        match macro_type(macro_ptr) {
+            0 => {
+                let macro_automata = CStr::from_ptr(macro_string(macro_ptr))
+                    .to_str()
+                    .expect("Error converting CString to String")
+                    .to_owned();
+                MacroType::Complement(macro_automata)
+            }
+            1 => {
+                let automata_list_len = macro_list_len(macro_ptr);
+                let automata_list_ptr = macro_list(macro_ptr);
+                // Get transitions one by one
+                let automata_list = Box::new(
+                    (0..automata_list_len)
+                        .map(|i| macro_list_i(automata_list_ptr, i))
+                        .map(|s| {
+                            CStr::from_ptr(s)
+                                .to_str()
+                                .expect("Error converting CString to String")
+                                .to_owned()
+                        })
+                        .collect(),
+                );
+                MacroType::Intersect(automata_list)
+            }
+            2 => {
+                let automata_list_len = macro_list_len(macro_ptr);
+                let automata_list_ptr = macro_list(macro_ptr);
+                // Get transitions one by one
+                let automata_list = Box::new(
+                    (0..automata_list_len)
+                        .map(|i| macro_list_i(automata_list_ptr, i))
+                        .map(|s| {
+                            CStr::from_ptr(s)
+                                .to_str()
+                                .expect("Error converting CString to String")
+                                .to_owned()
+                        })
+                        .collect(),
+                );
+                MacroType::Reunion(automata_list)
+            }
+            3 => {
+                let automata_list_len = macro_list_len(macro_ptr);
+                let automata_list_ptr = macro_list(macro_ptr);
+                // Get transitions one by one
+                let automata_list = Box::new(
+                    (0..automata_list_len)
+                        .map(|i| macro_list_i(automata_list_ptr, i))
+                        .map(|s| {
+                            CStr::from_ptr(s)
+                                .to_str()
+                                .expect("Error converting CString to String")
+                                .to_owned()
+                        })
+                        .collect(),
+                );
+                MacroType::Chain(automata_list)
+            }
+            4 => {
+                let number = macro_number(macro_ptr);
+                let automata = CStr::from_ptr(macro_string(macro_ptr))
+                    .to_str()
+                    .expect("Error converting CString to String")
+                    .to_owned();
+                MacroType::Repeat(number, automata)
+            }
+            5 => {
+                let number = macro_number(macro_ptr);
+                let move_symbol = parse_move(macro_move(macro_ptr));
+                MacroType::Move(move_symbol, number)
+            }
+            6 => {
+                let number = macro_number(macro_ptr);
+                let move_symbol = parse_move(macro_move(macro_ptr));
+                let override_symbol = macro_symbol(macro_ptr) as u8 as char;
+                MacroType::Override(move_symbol, number, override_symbol)
+            }
+            7 => {
+                let macro_text = CStr::from_ptr(macro_string(macro_ptr))
+                    .to_str()
+                    .expect("Error converting CString to String")
+                    .to_owned();
+                MacroType::Place(macro_text)
+            }
+            8 => {
+                let number = macro_number(macro_ptr);
+                let move_symbol = parse_move(macro_move(macro_ptr));
+                MacroType::Shift(move_symbol, number)
+            }
+            _ => panic!("Unexpected macro keyword type!"),
+        }
+    }
 }
 
 pub fn parse_machine(machine_ptr: *mut i32) -> Machine {
-    todo!()
+    unsafe {
+        let comp_len = machine_components_len(machine_ptr);
+        let comp_list = machine_components(machine_ptr);
+        let components = Box::new(
+            (0..comp_len)
+                .map(|i| {
+                    (
+                        machine_components_i_first(comp_list, i),
+                        machine_components_i_second(comp_list, i),
+                    )
+                })
+                .map(|(s1, s2)| {
+                    (
+                        CStr::from_ptr(s1)
+                            .to_str()
+                            .expect("Error converting CString to String")
+                            .to_owned(),
+                        CStr::from_ptr(s2)
+                            .to_str()
+                            .expect("Error converting CString to String")
+                            .to_owned(),
+                    )
+                })
+                .collect(),
+        );
+        let states_len = machine_states_len(machine_ptr);
+        let states_list = machine_states(machine_ptr);
+        let states = Box::new(
+            (0..states_len)
+                .map(|i| machine_states_i(states_list, i))
+                .map(parse_state)
+                .collect(),
+        );
+        Machine { components, states }
+    }
 }
 
 pub fn parse_automata(automata_ptr: *mut i32) -> AutomataType {
@@ -114,8 +258,11 @@ pub fn parse_automata(automata_ptr: *mut i32) -> AutomataType {
             .expect("Error converting CString to String")
             .to_owned();
         match automata_type(automata_ptr) {
-            0 => AutomataType::Macro(automata_name, parse_macro(automata_ptr)),
-            1 => AutomataType::Machine(automata_name, parse_machine(automata_ptr)),
+            0 => {
+                AutomataType::Machine(automata_name, parse_machine(automata_machine(automata_ptr)))
+            }
+
+            1 => AutomataType::Macro(automata_name, parse_macro(automata_macro(automata_ptr))),
             _ => panic!("Unexpected automata type"),
         }
     }
@@ -124,7 +271,7 @@ pub fn parse_automata(automata_ptr: *mut i32) -> AutomataType {
 fn parse_program(_program: *mut i32) -> Program {
     println!("Got back a Program");
     Program {
-        automata: Box::new([]),
+        automata: Box::new(vec![]),
     }
 }
 
