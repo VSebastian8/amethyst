@@ -1,1 +1,2 @@
 examples-linking-rust-and-haskell/** linguist-documentation
+src/tests/** linguist-documentation

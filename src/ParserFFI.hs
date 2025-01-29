@@ -18,7 +18,7 @@ import Distribution.Simple.BuildPaths (autogenComponentModulesDir)
 import Data.IntMap (size)
 
 -- Types for the C API
-data Result = Prog {getProgram :: !Program} | Err {getError :: !Error}
+-- data Result = Prog {getProgram :: !Program} | Err {getError :: !Error}
 
 data TransitionC = TransitionC !Char !Char !(Ptr Move) !CString
 
@@ -43,6 +43,8 @@ data MachineC = MachineC !Int ![(CString, CString)] !Int ![Ptr StateC]
 data AutomataC
   = MachC !CString !(Ptr MachineC)
   | MacroC !CString !(Ptr MacroKeywordC)
+
+data ResultC = ProgramC !Int ![Ptr AutomataC] | ErrorC !CString !Int !Int
 
 -- Storable instances for all syntax data types
 instance Storable Move where
@@ -296,7 +298,7 @@ instance Storable MachineC where
 
 
 instance Storable AutomataC where
-  sizeOf _ = sizeOf (undefined :: Ptr CString) 
+  sizeOf _ = sizeOf (undefined :: Ptr CString)
        + 2 * sizeOf (undefined :: Ptr Int)
   alignment  _ = alignment  (undefined :: Ptr CString)
   poke ptr automata =
@@ -304,65 +306,69 @@ instance Storable AutomataC where
       MachC name machine -> do
         poke (castPtr ptr :: Ptr Int) 0
         poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) name
-        poke (castPtr ptr `plusPtr` 
-            ( sizeOf (undefined :: Int) 
+        poke (castPtr ptr `plusPtr`
+            ( sizeOf (undefined :: Int)
             + sizeOf (undefined :: Ptr CString) )) machine
       MacroC name keyword  -> do
         poke (castPtr ptr :: Ptr Int) 1
         poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) name
-        poke (castPtr ptr `plusPtr` 
-            ( sizeOf (undefined :: Int) 
+        poke (castPtr ptr `plusPtr`
+            ( sizeOf (undefined :: Int)
             + sizeOf (undefined :: Ptr CString) )) keyword
   peek ptr = do
     tag <- peek (castPtr ptr :: Ptr Int)
     name <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
     case tag of
       0 -> do
-        machine <- peek (castPtr ptr `plusPtr` 
-          ( sizeOf (undefined :: Int) 
+        machine <- peek (castPtr ptr `plusPtr`
+          ( sizeOf (undefined :: Int)
           + sizeOf (undefined :: Ptr CString) ))
         return $ MachC name machine
       1 -> do
-        keyword <- peek (castPtr ptr `plusPtr` 
-          ( sizeOf (undefined :: Int) 
+        keyword <- peek (castPtr ptr `plusPtr`
+          ( sizeOf (undefined :: Int)
           + sizeOf (undefined :: Ptr CString) ))
         return $ MacroC name keyword
       _ -> undefined
 
-instance Storable Program where
-  sizeOf _ = sizeOf (undefined :: Ptr Program)
-  alignment _ = sizeOf (undefined :: Ptr Program)
-  poke ptr program = undefined
-  peek ptr = undefined
-
-instance Storable Error where
-  sizeOf _ = sizeOf (undefined :: Ptr Error)
-  alignment _ = alignment (undefined :: Ptr Error)
-  poke ptr (Error err) = do
-    str <- newCString err
-    poke (castPtr ptr :: Ptr CString) str
-  peek ptr = do
-    cstr <- peek (castPtr ptr :: Ptr CString)
-    str <- peekCString cstr
-    return $ Error str
-
-instance Storable Result where
-  sizeOf _ = sizeOf (undefined :: Ptr Result)
-  alignment _ = alignment (undefined :: Ptr Result)
-  poke ptr (Prog p) = do
+instance Storable ResultC where
+  sizeOf _ = 3 * sizeOf (undefined :: Ptr Int) + sizeOf (undefined :: Ptr CString)
+  alignment _ = alignment (undefined :: Ptr CString)
+  poke ptr (ProgramC len automataList) = do
     poke (castPtr ptr :: Ptr Int) 0
-    pokeElemOff (castPtr ptr :: Ptr Program) 1 p
-  poke ptr (Err errF) = do
+    poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) len
+    automataArray <- mallocBytes $ length automataList * sizeOf (undefined :: Ptr AutomataC)
+    poke (castPtr ptr `plusPtr` (2 * sizeOf (undefined :: Int))) automataArray
+    forM_ (zip automataList [0..]) $ \(automata, i) -> do
+      pokeElemOff (castPtr automataArray :: Ptr (Ptr AutomataC)) i automata
+  poke ptr (ErrorC error line column) = do
     poke (castPtr ptr :: Ptr Int) 1
-    pokeElemOff (castPtr ptr :: Ptr Error) 1 errF
+    poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) error
+    poke (castPtr ptr `plusPtr` 
+        ( sizeOf (undefined :: Int) 
+        + sizeOf (undefined :: Ptr CString) )) line 
+    poke (castPtr ptr `plusPtr` 
+        ( 2 * sizeOf (undefined :: Int) 
+        + sizeOf (undefined :: Ptr CString) )) column
   peek ptr = do
     tag <- peek (castPtr ptr :: Ptr Int)
     case tag of
-      0 -> return $ (Err . Error) "to do"
+      0 -> do
+        len <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
+        automataArray <- peek (castPtr ptr `plusPtr` (2 * sizeOf (undefined :: Int)))
+        automataList <- forM [0..len - 1] $ \i ->
+            peekElemOff (castPtr automataArray :: Ptr (Ptr AutomataC)) i
+        return $ ProgramC len automataList
       1 -> do
-        errF <- peekElemOff (castPtr ptr :: Ptr Error) 1
-        return $ Err errF
-      _ -> return $ (Err . Error) "Unidentified parser error"
+        error <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) 
+        line <- peek (castPtr ptr `plusPtr` 
+           ( sizeOf (undefined :: Int) 
+           + sizeOf (undefined :: Ptr CString) )) 
+        column <- peek (castPtr ptr `plusPtr` 
+           ( 2 * sizeOf (undefined :: Int) 
+           + sizeOf (undefined :: Ptr CString) ))
+        return $ ErrorC error line column
+      _ -> undefined
 
 -- Conversions before Syntax types to Storable C types
 encryptTransition :: Transition -> TransitionC
@@ -399,7 +405,21 @@ encryptAutomata (Macro name keyword) =
       macroKeyword = unsafePerformIO $ new $ encryptMacro keyword
   in MacroC macroName macroKeyword
 
--- Functions exposed through the C api
+runAmethystParser :: String -> ResultC
+runAmethystParser code = case runParser programPE (Leftover code 0 0) of
+    Nothing -> ErrorC (unsafePerformIO $ newCString "Unidentified parser error") 0 0
+    Just (Leftover _ line column, result) ->
+      case result of
+        Left (Error error) -> ErrorC (unsafePerformIO $ newCString error) line column 
+        Right (Program automata) -> ProgramC (length automata) (map (unsafePerformIO.new.encryptAutomata) automata)
+
+-- Function used to parse the input string
+foreign export ccall "amethyst_parser" amethystParser :: CString -> IO (Ptr ResultC)
+amethystParser codeC = do
+  code <- peekCString codeC
+  new $ runAmethystParser code
+
+-- Functions used to reconstruct the syntax through the C api
 foreign export ccall "move_type" moveType :: Ptr Move -> IO Int
 moveType movePtr = do
   move <- peek movePtr
@@ -668,6 +688,59 @@ freeAutomata autoPtr = do
       free name
   free autoPtr
 
+-- Program functions
+foreign export ccall "result_type" resultType :: Ptr ResultC -> IO Int
+resultType resultPtr = do
+  result <- peek resultPtr
+  return $ case result of
+    ProgramC {} -> 0
+    ErrorC {} -> 1
+
+foreign export ccall "result_program_len" resultProgramLen :: Ptr ResultC -> IO Int
+resultProgramLen resultPtr = do
+  result <- peek resultPtr
+  return $ case result of
+    ProgramC len _ -> len
+    ErrorC {} -> undefined
+
+foreign export ccall "program_automata" programAutomata :: Ptr ResultC -> IO (Ptr [AutomataC])
+programAutomata programPtr = peek $ castPtr programPtr `plusPtr` (2 * sizeOf (undefined :: Int))
+
+foreign export ccall "program_automata_i" programAutomataI :: Ptr (Ptr AutomataC) -> Int -> IO (Ptr AutomataC)
+programAutomataI = peekElemOff
+
+foreign export ccall "error_string" resultError :: Ptr ResultC -> IO CString
+resultError resultPtr = do
+  result <- peek resultPtr
+  return $ case result of
+    ProgramC _ _ -> undefined
+    ErrorC error _ _ -> error 
+
+foreign export ccall "error_line" resultErrorLine :: Ptr ResultC -> IO Int
+resultErrorLine resultPtr = do
+  result <- peek resultPtr
+  return $ case result of
+    ProgramC _ _ -> undefined
+    ErrorC _ line _ -> line
+
+foreign export ccall "error_column" resultErrorColumn :: Ptr ResultC -> IO Int
+resultErrorColumn resultPtr = do
+  result <- peek resultPtr
+  return $ case result of
+    ProgramC _ _ -> undefined
+    ErrorC _ _ column -> column
+
+foreign export ccall "free_result" freeResult :: Ptr ResultC -> IO ()
+freeResult resultPtr = do
+  result <- peek resultPtr
+  case result of
+    ProgramC _ automataList -> do
+      forM_ automataList freeAutomata
+      automataArray <- peek (castPtr resultPtr `plusPtr` (2 * sizeOf(undefined :: Int)))
+      free automataArray
+    ErrorC error _ _ -> free error
+  free resultPtr
+
 -- Test functions
 foreign export ccall "test_transition" testTransition :: Int -> IO (Ptr TransitionC)
 testTransition n = new.encryptTransition $
@@ -693,21 +766,8 @@ testMachine n = new.encryptAutomata $
   [machine1, machine2, machine3]
   !! (n - 1)
 
--- Result functions
-foreign export ccall "result_type" resultType :: Ptr Result -> IO Int
-resultType resPtr = do
-  result <- peek resPtr
-  case result of
-    Prog _ -> return 0
-    Err _ -> return 1
-
-foreign export ccall "return_error" returnError :: Ptr Result -> IO CString
-returnError resPtr = do
-  (Err (Error e)) <- peek resPtr
-  newCString e
-
-foreign export ccall parse :: CString -> IO (Ptr Result)
-parse _ = new $ (Err . Error) "hello, I am an error"
+foreign export ccall "test_program" testProgram :: Int -> IO (Ptr ResultC)
+testProgram n = new.runAmethystParser $ [program1, program2, program3] !! (n - 1)
 
 foreign export ccall "clean_up" cleanUp :: IO ()
 cleanUp = System.Mem.performGC

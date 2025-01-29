@@ -5,19 +5,23 @@ extern "C" {
     fn free_transition(transition_ptr: *mut i32);
     fn free_state(state_ptr: *mut i32);
     fn free_automata(automata_ptr: *mut i32);
+    fn free_result(program_ptr: *mut i32);
     // Test functions
     fn test_transition(n: i32) -> *mut i32;
     fn test_state(n: i32) -> *mut i32;
     fn test_macro(n: i32) -> *mut i32;
     fn test_machine(n: i32) -> *mut i32;
+    fn test_program(n: i32) -> *mut i32;
 }
 
-use amethyst::parser::{parse_automata, parse_state, parse_transition};
+use amethyst::parser::{parse_automata, parse_result, parse_state, parse_transition};
 use serial_test::serial;
 
 #[cfg(test)]
 mod tests {
-    use amethyst::syntax::{AutomataType, Machine, MacroType, Move, State, StateType, Transition};
+    use amethyst::syntax::{
+        AutomataType, Machine, MacroType, Move, Program, State, StateType, Transition,
+    };
 
     use super::*;
 
@@ -612,6 +616,171 @@ mod tests {
                     ])
                 }
             )
+        )
+    }
+
+    #[test]
+    #[serial]
+    pub fn test_program_1() {
+        let program_res;
+        unsafe {
+            let program_ptr = test_program(1);
+            program_res = parse_result(program_ptr);
+            free_result(program_ptr);
+        }
+        print!("{:?}", program_res);
+        assert_eq!(
+            program_res,
+            Ok(Program {
+                automata: Box::new(vec![
+                    AutomataType::Machine(
+                        "not".to_owned(),
+                        Machine {
+                            components: Box::new(vec![]),
+                            states: Box::new(vec![
+                                StateType::State(
+                                    "q0".to_owned(),
+                                    State {
+                                        initial: true,
+                                        transitions: Box::new(vec![
+                                            Transition {
+                                                read_symbol: '@',
+                                                write_symbol: '@',
+                                                move_symbol: Move::Right,
+                                                new_state: "q0".to_owned()
+                                            },
+                                            Transition {
+                                                read_symbol: '1',
+                                                write_symbol: '0',
+                                                move_symbol: Move::Left,
+                                                new_state: "q1".to_owned()
+                                            },
+                                            Transition {
+                                                read_symbol: '0',
+                                                write_symbol: '1',
+                                                move_symbol: Move::Left,
+                                                new_state: "q1".to_owned()
+                                            }
+                                        ])
+                                    }
+                                ),
+                                StateType::Accept("q1".to_owned())
+                            ])
+                        }
+                    ),
+                    AutomataType::Macro("three".to_owned(), MacroType::Repeat(3, "not".to_owned())),
+                    AutomataType::Machine(
+                        "main".to_owned(),
+                        Machine {
+                            components: Box::new(vec![
+                                ("not".to_owned(), "n1".to_owned()),
+                                ("three".to_owned(), "n2".to_owned())
+                            ]),
+                            states: Box::new(vec![
+                                StateType::State(
+                                    "q0".to_owned(),
+                                    State {
+                                        initial: true,
+                                        transitions: Box::new(vec![
+                                            Transition {
+                                                read_symbol: 'B',
+                                                write_symbol: 'B',
+                                                move_symbol: Move::Neutral,
+                                                new_state: "n1.q0".to_owned()
+                                            },
+                                            Transition {
+                                                read_symbol: '_',
+                                                write_symbol: 'B',
+                                                move_symbol: Move::Right,
+                                                new_state: "qrej".to_owned()
+                                            }
+                                        ])
+                                    }
+                                ),
+                                StateType::State(
+                                    "n1.q1".to_owned(),
+                                    State {
+                                        initial: false,
+                                        transitions: Box::new(vec![Transition {
+                                            read_symbol: '_',
+                                            write_symbol: '_',
+                                            move_symbol: Move::Neutral,
+                                            new_state: "n2.q0".to_owned()
+                                        }])
+                                    }
+                                ),
+                                StateType::State(
+                                    "n2.q1".to_owned(),
+                                    State {
+                                        initial: false,
+                                        transitions: Box::new(vec![Transition {
+                                            read_symbol: '_',
+                                            write_symbol: '_',
+                                            move_symbol: Move::Neutral,
+                                            new_state: "qacc".to_owned()
+                                        }])
+                                    }
+                                ),
+                                StateType::Reject("qrej".to_owned()),
+                                StateType::Accept("qacc".to_owned())
+                            ])
+                        }
+                    )
+                ])
+            })
+        )
+    }
+
+    #[test]
+    #[serial]
+    pub fn test_program_2() {
+        let program_res;
+        unsafe {
+            let program_ptr = test_program(2);
+            program_res = parse_result(program_ptr);
+            free_result(program_ptr);
+        }
+        print!("{:?}", program_res);
+        assert_eq!(
+            program_res,
+            Err("Error: unexpected keyword - auto at line 2 column 0".to_owned())
+        )
+    }
+
+    #[test]
+    #[serial]
+    pub fn test_program_3() {
+        let program_res;
+        unsafe {
+            let program_ptr = test_program(3);
+            program_res = parse_result(program_ptr);
+            free_result(program_ptr);
+        }
+        print!("{:?}", program_res);
+        assert_eq!(
+            program_res,
+            Ok(Program {
+                automata: Box::new(vec![
+                    AutomataType::Macro(
+                        "output".to_owned(),
+                        MacroType::Place("HELLO-WORLD!".to_owned())
+                    ),
+                    AutomataType::Macro("mv".to_owned(), MacroType::Move(Move::Right, 12)),
+                    AutomataType::Macro(
+                        "place_and_move".to_owned(),
+                        MacroType::Chain(Box::new(vec!["output".to_owned(), "mv".to_owned()]))
+                    ),
+                    AutomataType::Macro(
+                        "do3".to_owned(),
+                        MacroType::Repeat(3, "place_and_move".to_owned())
+                    ),
+                    AutomataType::Macro("go.back".to_owned(), MacroType::Move(Move::Left, 36)),
+                    AutomataType::Macro(
+                        "main".to_owned(),
+                        MacroType::Chain(Box::new(vec!["do3".to_owned(), "go.back".to_owned()]))
+                    )
+                ])
+            })
         )
     }
 }

@@ -53,13 +53,20 @@ extern char *automata_name(const int *automata);
 extern int *automata_machine(const int *automata);
 extern int *automata_macro(const int *automata);
 extern void free_automata(const int *automata);
+// Program | Error functions
+extern int result_type(const int *result);
+extern int result_program_len(const int *program);
+extern int *program_automata(const int *program);
+extern int *program_automata_i(const int *automata, const int i);
+extern char *error_string(const int *error);
+extern int error_line(const int *error);
+extern int error_column(const int *error);
+extern void free_result(const int *result);
 // Test functions
 extern int *test_transition(int n);
 extern int *test_state(int n);
 extern int *test_macro(int n);
 extern int *test_machine(int n);
-// Result functions
-extern int *result_type(const int *result);
-extern char *return_error(const int *error);
-// String -> Syntax
-extern int *parse(const char *str);
+extern int *test_program(int n);
+// Input String -> Syntax Tree
+extern int *amethyst_parser(const char *code);

@@ -8,6 +8,8 @@ use crate::syntax::*;
 extern "C" {
     fn initialize_haskell();
     fn exit_haskell();
+    fn amethyst_parser(code: *const c_char) -> *mut i32;
+    fn free_result(result_ptr: *mut i32);
     // Move function
     fn move_type(move_ptr: *mut i32) -> i32;
     // Transition functions
@@ -45,9 +47,13 @@ extern "C" {
     fn automata_machine(automata_ptr: *mut i32) -> *mut i32;
     fn automata_macro(automata_ptr: *mut i32) -> *mut i32;
     // Result functions
-    fn result_type(res: *mut i32) -> i32;
-    fn return_error(res: *mut i32) -> *mut c_char;
-    fn parse(input: *const c_char) -> *mut i32;
+    fn result_type(result_ptr: *mut i32) -> i32;
+    fn result_program_len(program_ptr: *mut i32) -> i32;
+    fn program_automata(program_ptr: *mut i32) -> *mut i32;
+    fn program_automata_i(automata_ptr: *mut i32, i: i32) -> *mut i32;
+    fn error_string(error_ptr: *mut i32) -> *mut c_char;
+    fn error_line(error_ptr: *mut i32) -> i32;
+    fn error_column(error_ptr: *mut i32) -> i32;
 }
 
 fn parse_move(move_ptr: *mut i32) -> Move {
@@ -268,34 +274,51 @@ pub fn parse_automata(automata_ptr: *mut i32) -> AutomataType {
     }
 }
 
-fn parse_program(_program: *mut i32) -> Program {
-    println!("Got back a Program");
-    Program {
-        automata: Box::new(vec![]),
-    }
-}
-
-fn parse_error(error: *mut i32) -> String {
-    println!("Got back an Error");
+fn parse_program(program_ptr: *mut i32) -> Program {
     unsafe {
-        let err_ptr = return_error(error);
-        let c_err = CString::from_raw(err_ptr);
-        c_err.to_str().expect("CString failed!").to_owned()
+        let automata_len = result_program_len(program_ptr);
+        let automata_list = program_automata(program_ptr);
+        let automata = Box::new(
+            (0..automata_len)
+                .map(|i| program_automata_i(automata_list, i))
+                .map(parse_automata)
+                .collect(),
+        );
+        Program { automata }
     }
 }
 
-#[allow(dead_code)]
-pub fn call_parser() -> Result<Program, String> {
+fn parse_error(error_ptr: *mut i32) -> String {
+    unsafe {
+        let error_string = CStr::from_ptr(error_string(error_ptr))
+            .to_str()
+            .expect("Error converting CString to String")
+            .to_owned();
+        let line = error_line(error_ptr);
+        let column = error_column(error_ptr);
+        return format!("Error: {} at line {} column {}", error_string, line, column);
+    }
+}
+
+pub fn parse_result(result_ptr: *mut i32) -> Result<Program, String> {
+    unsafe {
+        match result_type(result_ptr) {
+            0 => Ok(parse_program(result_ptr)),
+            1 => Err(parse_error(result_ptr)),
+            _ => panic!("Unexpected result type"),
+        }
+    }
+}
+
+pub fn parse_code(code: String) -> Result<Program, String> {
     let result;
     unsafe {
         initialize_haskell();
-        let s = CString::new("hi there!").expect("CString::new failed");
-        let res = parse(s.as_ptr());
-        result = match result_type(res) {
-            0 => Ok(parse_program(res)),
-            1 => Err(parse_error(res)),
-            _ => panic!("Unexpected result type from parser!"),
-        };
+
+        let code_c = CString::new(code).expect("CString::new failed");
+        let result_ptr = amethyst_parser(code_c.as_ptr());
+        result = parse_result(result_ptr);
+        free_result(result_ptr);
 
         exit_haskell();
     }
