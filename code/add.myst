@@ -5,6 +5,7 @@ Output: @1000@
         ^
 -}
 automata add(){
+    -- This is how we declare the *initial state* of the `Turing Machine`: 
     initial state q0 {
         +/0,R->q0;
         @/@,R->q0;

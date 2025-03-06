@@ -13,10 +13,10 @@ transition8 = "A/B,N -> qstare " -- error expected ;
 
 -- State Examples
 state1, state2, state3, state4, state5, state6, state7, state8, state9 :: String
-state1 = "initial state nume{ B / B, L -> nume; }"
+state1 = "initial state nume{ B / B, L -> nume; --State done\n} "
 state2 = "accept state okk;"
 state3 = "reject state nu_ok;"
-state4 = "state renume {A/A,N->nume;H/B,R->renume;}"
+state4 = "state renume {{-state begins-}A/A,N->nume; --a transition\n {-comment\nin\nstate-}  H/B,R->renume;}"
 state5 = "acceptstate bad;" -- error missing space
 state6 = "reject statebad;" -- error missing space
 state7 = "state {A/A,R->q;}" -- error missing state name
@@ -50,11 +50,16 @@ automata luck = random(q0, q1, q2, 2, 3, 4); -- state names and weights, this on
 machine1, machine2, machine3, machine4, machine5, machine6, machine7, machine8 :: String
 machine1 = "automata or(){initial state q0 {0 / 0, R -> q0; 1 / 1 , R -> q1; _ / _ , N -> f;} state q1 {0 / 1 , R -> q1; 1 / 1 , N -> q1; _ / _, N -> f;} accept state f;}"
 machine2 = "automata even(){\n\ 
-\   initial state even {\n\
-\      0 / 0, R -> even;\n\
+\   {-Comments like this are  \n\
+\   useful for multiple \n\
+\   lines -}\n\
+\   initial state even \n\
+\   { -- The state begins here\n\
+\      0 / 0, R -> even; --This is a transition\n\
 \      1 / 1, R -> odd;\n\
 \      B / B, N -> true;\n\
 \   }\n\
+\   -- We can have comments now\n\
 \   state odd{\n\ 
 \       0 / 0, R -> odd;\n\
 \       1 / 1, R -> even;\n\
@@ -101,7 +106,9 @@ program1 = " \
 \       accept state q1;    \n\
 \   }   \n\
 \   \n\
-\   automata three = repeat(3, not);\n\
+\   -- Here is a comment in the program\n\
+\   {-And another-}--and  another immediately after\n\
+\   automata three = repeat(3, not); -- this is a macro\n\
 \   automata main (not n1, three n2) {    \n\
 \       initial state q0 {      \n\
 \           B/B,N-> n1.q0; _/B,R->qrej;    \n\
@@ -111,7 +118,7 @@ program1 = " \
 \           _ / _ , N -> qacc;  \n\
 \       }   \n\
 \       reject state qrej; accept state qacc;  \n\
-\   }   \n\
+\   } -- program done  \n\
 \"
 program2 = "\
 \automata ch = chain(c1, c2);\n\

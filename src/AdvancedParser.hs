@@ -159,7 +159,7 @@ notCharP x = Parser lookC
         if y == x
             then Nothing
             else Just (l, Right ' ')
-            
+
 numberPE :: Parser Int
 numberPE = numberP
     <|> Parser (Just . makeError "expected number - found " . lookLit)
@@ -191,6 +191,13 @@ wsE :: Parser String
 wsE = some (charP ' ')
     <|> Parser (Just . makeError "expected space - found " . look)
 
+commentPE :: Parser String
+commentPE = (charP '-' *> charP '-' *> spanP (/= '\n') <* charP '\n')
+    <|> (charP '{' *> charP '-' *> spanP (`notElem` "-}") <* charPE '-' <* charPE '}')
+
+commPE :: Parser String
+commPE = ws *> (concat <$> many (commentPE <* ws))
+
 stringPE :: String -> Parser String
 stringPE str = stringP str
     <|> Parser (Just . makeError ("expected \"" ++ str ++ "\" - found ") . lookLit)
@@ -213,8 +220,8 @@ statePE = (Reject <$> rejectPE)
                 *> notNullE "expected state name" wordPE <* ws
         normalPE = stringP "state" *> wsE
                 *> notNullE "expected state name" wordPE <* ws
-        trPE = charPE '{' *>
-            (notNullE "state can't have 0 transitions" . many) transitionPE
+        trPE = charPE '{' *> commPE *>
+            (notNullE "state can't have 0 transitions" . many) (transitionPE <*  commPE)
             <* ws <* charPE '}'
         makeState :: Bool -> String -> [Transition] -> State
         makeState initial name transitions = State name transitions initial
@@ -224,8 +231,8 @@ machinePE =
     Machine
       <$> (stringP "automata" *> wsE *> notNullE "expected automata name" wordPE <* ws)
       <*> (charP '(' *> sepBy comma pair <* ws <* charPE ')' <* ws)
-      <*> (charPE '{' *>
-          (notNullE "machine can't have 0 states" . many) (ws *> statePE <* ws)
+      <*> (charPE '{' *> commPE *>
+          (notNullE "machine can't have 0 states" . many) (ws *> statePE <* ws <* commPE)
            <* charPE '}')
     where
         comma = ws *> charP ',' <* ws
@@ -296,4 +303,4 @@ automataPE = macroPE <|> machinePE
 programPE :: Parser Program
 programPE =
     Program <$> many
-       (ws *> automataPE <* ws <|> notCharP ' ' *> Parser (Just . makeError "unexpected keyword - " . lookLit))
+       (commPE *> automataPE <* commPE <|> notCharP ' ' *> Parser (Just . makeError "unexpected keyword - " . lookLit))
