@@ -1,0 +1,12 @@
+{- 
+Input: @101+011@
+       ^
+Output: @1000@
+        ^
+-}
+automata add(){
+    initial state q0 {
+        +/0,R->q0;
+        @/@,R->q0;
+    }
+}

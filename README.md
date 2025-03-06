@@ -2,7 +2,13 @@
 
 **Amethyst** is a **programming language** where you write everything using **Turing machines**. Its goal is to help grow the understanding of this popular and powerful **computational model**.
 
-### Requirements:
+### Run a .myst file
+
+```bash
+cargo run -- code/add.myst -input 110+01
+```
+
+### Requirements
 
 - ghc (for Haskell)
 - gcc (for C)
@@ -43,12 +49,16 @@ The following macros are present so far:
 
 ### Checking for memory leaks
 
-cargo run \
+```bash
+cargo run
 valgrind target/debug/amethyst --leak-check=full -s
+```
 
 ### Testing the FFI parser
 
+```bash
 cargo test --test parser_tests -- --nocapture --test-threads=1
+```
 
 > Runs all tests from tests/parser_tests.rs \
 > Shows the output of println! \
