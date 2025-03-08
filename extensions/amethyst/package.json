@@ -1,0 +1,34 @@
+{
+  "name": "amethyst",
+  "displayName": "Amethyst Syntax Highlighting",
+  "description": "Syntax Highlighting for Amethyst, the Turing Machine Programming Language",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.98.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "amethyst",
+        "aliases": [
+          "Amethyst",
+          "amethyst"
+        ],
+        "extensions": [
+          ".myst"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "amethyst",
+        "scopeName": "source.myst",
+        "path": "./syntaxes/amethyst.tmLanguage.json"
+      }
+    ]
+  }
+}

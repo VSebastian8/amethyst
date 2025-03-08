@@ -1,0 +1,33 @@
+{-A simple Turing Machine
+Notice the @ symbol and the move constants
+-}
+automata not(){
+    initial state q0 {     
+           @ / @ , R -> q0;   
+           1 / 0 , L -> q1;   
+           0 / 1 , L -> q1;   
+       }
+    accept state q1;    
+}   
+   
+-- Various macros
+automata three = repeat(3, not);
+automata ov3r = override(R, 12, Z);
+automata p_lace = place("hello world");
+
+{-
+This machine uses
+the previously declared not and three machines
+-}
+automata main (not n1, three n2) {    
+    initial state q0a{
+        @/@,N-> n1.q0; _/@,R->qrej;    
+    }
+    -- This is an empty state:
+    state random_state  {  }
+    state n1.q1 {_/_,N->n2.q0;} -- This is the state of a component
+    state n2.q1 {   
+        _ / _ , N -> qacc;  
+    }   
+    reject state qrej; accept state qacc;  
+} 
