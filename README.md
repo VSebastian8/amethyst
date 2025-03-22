@@ -5,7 +5,7 @@
 ### Run a .myst file
 
 ```bash
-cargo run -- code/add.myst -input 110+01
+cargo run -- code/add.myst -input 110+01 -o -limit 500 -tape
 ```
 
 ### Requirements
