@@ -2,17 +2,17 @@ use core::fmt::Display;
 
 pub struct Config {
     // Starting configuration of the tape
-    input: String,
+    pub input: String,
     // Displays the tape content from the head to the first @ symbol
-    show_output: bool,
+    pub show_output: bool,
     // Displays the entire tape
-    show_tape: bool,
+    pub show_tape: bool,
     // Which Turing machine to run from the .myst file
-    start: String,
+    pub start: String,
     // Memory bound for the tape
-    bound: Option<u32>,
+    pub bound: Option<u32>,
     // Maximum number of iterations since the Turing Machine may never halt
-    iterations: u32,
+    pub iterations: u32,
 }
 
 #[derive(Default)]

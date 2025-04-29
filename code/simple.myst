@@ -1,0 +1,32 @@
+{-
+Turing machine that accepts the language A^n B^n
+Input: @AAABBB@
+        ^
+|=> accept
+Input: @AABBB@
+        ^
+|=> reject
+-}
+
+automata main(){
+    initial state parse_a{
+        A/@, R -> goright;
+        @/@, N -> true;
+        _/_, N -> false;
+    }
+    state goright{
+        @/@, L -> parse_b;
+        _/_, R -> goright;
+    }
+    state parse_b{
+        @/@, N -> false;
+        B/@, L -> goleft;
+        _/_, N -> false;
+    }
+    state goleft{
+        @/@, R -> parse_a;
+        _/_, L -> goleft;
+    }
+    accept state true;
+    reject state false;
+}
