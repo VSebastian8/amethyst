@@ -1,12 +1,38 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::{
     config::Config,
-    syntax::{AutomataType, Machine, Move, Program, StateType},
+    syntax::{AutomataType, Move, Program, StateType},
 };
+use core::fmt::Display;
+use std::collections::{HashMap, HashSet};
+
+pub enum RunResult {
+    Accept,
+    Reject,
+    ExceededTime,
+    ExceededMemory,
+}
+
+impl Display for RunResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match *self {
+                RunResult::Accept => "Accepted!",
+                RunResult::Reject => "Rejected!",
+                RunResult::ExceededTime =>
+                    "Turing Machine exceeded the maximum number of iterations!",
+                RunResult::ExceededMemory =>
+                    "Turing Machine exceeded the maximum amount of memory!",
+            }
+        )
+    }
+}
+
 pub struct Tape {
     left: Vec<char>,
     right: Vec<char>,
+    size: usize,
 }
 
 impl Default for Tape {
@@ -14,7 +40,27 @@ impl Default for Tape {
         Self {
             left: Vec::new(),
             right: Vec::new(),
+            size: 0,
         }
+    }
+}
+
+impl Display for Tape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Tape: ..@{}|{}|@..",
+            self.left
+                .iter()
+                .flat_map(|sym| ['|', *sym])
+                .collect::<String>(),
+            self.right
+                .iter()
+                .rev()
+                .flat_map(|sym| ['|', *sym])
+                .skip(1)
+                .collect::<String>()
+        )
     }
 }
 
@@ -29,14 +75,20 @@ impl Tape {
     pub fn move_left(&mut self) {
         let character = match self.left.pop() {
             Some(x) => x,
-            None => '@',
+            None => {
+                self.size += 1;
+                '@'
+            }
         };
         self.right.push(character);
     }
     pub fn move_right(&mut self) {
         let character = match self.right.pop() {
             Some(x) => x,
-            None => '@',
+            None => {
+                self.size += 1;
+                '@'
+            }
         };
         self.left.push(character);
     }
@@ -45,6 +97,7 @@ impl Tape {
             .chars()
             .rev()
             .for_each(|character| self.right.push(character));
+        self.size = input.len();
     }
 }
 
@@ -155,18 +208,19 @@ impl TuringMachine {
         }
     }
 
-    pub fn run(&mut self, config: Config) {
-        self.tape.initialize(config.input);
+    pub fn run(&mut self, config: Config) -> RunResult {
+        self.tape.initialize(config.input.to_owned());
         let mut iteration = 0;
+        if config.debug {
+            print!("State: {}", self.current_state);
+        }
+
         while iteration < config.iterations {
-            println!("Current State {}", self.current_state);
             if self.accept_states.contains(&self.current_state) {
-                println!("Accept!");
-                return;
+                return self.exit(RunResult::Accept, config);
             }
             if self.reject_states.contains(&self.current_state) {
-                println!("Reject!");
-                return;
+                return self.exit(RunResult::Reject, config);
             }
             let read_symbol = self.tape.read();
             let (new_state, write_symbol, move_symbol) = self.get_transition(read_symbol);
@@ -177,8 +231,41 @@ impl TuringMachine {
                 Move::Right => self.tape.move_right(),
                 Move::Neutral => {}
             }
+            if config.debug {
+                print!(" -> {}", self.current_state);
+            }
+            match config.bound {
+                Some(memory) => {
+                    if self.tape.size > memory {
+                        return self.exit(RunResult::ExceededMemory, config);
+                    }
+                }
+                None => {}
+            }
             iteration += 1;
         }
-        println!("Turing machine surpassed the maximum number of iterations!")
+
+        return self.exit(RunResult::ExceededTime, config);
+    }
+
+    fn exit(&mut self, result: RunResult, config: Config) -> RunResult {
+        if config.debug {
+            println!("");
+        }
+        if config.show_tape {
+            println!("{}", self.tape)
+        }
+        if config.show_output {
+            println!(
+                "Output: {}",
+                self.tape
+                    .right
+                    .iter()
+                    .rev()
+                    .filter(|sym| **sym != '@')
+                    .collect::<String>()
+            )
+        }
+        result
     }
 }

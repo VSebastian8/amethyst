@@ -7,58 +7,62 @@ fn main() {
     let haskell_library = "amethyst_parser";
     let c_api_library = "amethyst_parser_api";
 
-    // Erases last build and prepares the lib folder for the shared objects
-    Command::new("rm").args(&["-r", "./lib"]).status().unwrap();
-    Command::new("mkdir").args(&[subfolder]).status().unwrap();
+    let parser_changed = false;
 
-    // Creates the Haskell shared library which we call from C
-    Command::new("ghc")
-        .args(&[
-            &format!("./src/{}", haskell_file),
-            "-dynamic",
-            "-shared",
-            "-fPIC",
-            "-isrc",
-            "-no-keep-hi-files",
-            "-no-keep-o-files",
-            "-stubdir ./clean",
-            "-o",
-            &format!("./{}/lib{}.so", subfolder, haskell_library),
-        ])
-        .status()
-        .expect("Unable to create hs shared object");
+    if parser_changed {
+        // Erases last build and prepares the lib folder for the shared objects
+        Command::new("rm").args(&["-r", "./lib"]).status().unwrap();
+        Command::new("mkdir").args(&[subfolder]).status().unwrap();
 
-    // Creates the C API library
-    Command::new("gcc")
-        .args(&[
-            &format!("./src/{}", c_file),
-            "-shared",
-            // Paths for haskell-c linking
-            "-I/usr/lib/ghc/include",
-            "-L/usr/lib/ghc/rts",
-            "-Wl,-rpath,/usr/lib/ghc/rts",
-            // Paths for running from top of the project
-            &format!("-L./{}", subfolder),
-            &format!("-Wl,-rpath,./{}", subfolder),
-            // Paths for running from ./src
-            &format!("-L./../{}", subfolder),
-            &format!("-Wl,-rpath,./../{}", subfolder),
-            // Paths for running from ./subfolder folder
-            "-L.",
-            "-Wl,-rpath,.",
-            "-lHSrts-ghc8.8.4",
-            &format!("-l{}", haskell_library),
-            "-o",
-            &format!("./{}/lib{}.so", subfolder, c_api_library),
-        ])
-        .status()
-        .expect("Unable to create c shared object");
+        // Creates the Haskell shared library which we call from C
+        Command::new("ghc")
+            .args(&[
+                &format!("./src/{}", haskell_file),
+                "-dynamic",
+                "-shared",
+                "-fPIC",
+                "-isrc",
+                "-no-keep-hi-files",
+                "-no-keep-o-files",
+                "-stubdir ./clean",
+                "-o",
+                &format!("./{}/lib{}.so", subfolder, haskell_library),
+            ])
+            .status()
+            .expect("Unable to create hs shared object");
 
-    // Delete the useless files
-    Command::new("rm")
-        .args(&["-r", "./clean"])
-        .status()
-        .unwrap();
+        // Creates the C API library
+        Command::new("gcc")
+            .args(&[
+                &format!("./src/{}", c_file),
+                "-shared",
+                // Paths for haskell-c linking
+                "-I/usr/lib/ghc/include",
+                "-L/usr/lib/ghc/rts",
+                "-Wl,-rpath,/usr/lib/ghc/rts",
+                // Paths for running from top of the project
+                &format!("-L./{}", subfolder),
+                &format!("-Wl,-rpath,./{}", subfolder),
+                // Paths for running from ./src
+                &format!("-L./../{}", subfolder),
+                &format!("-Wl,-rpath,./../{}", subfolder),
+                // Paths for running from ./subfolder folder
+                "-L.",
+                "-Wl,-rpath,.",
+                "-lHSrts-ghc8.8.4",
+                &format!("-l{}", haskell_library),
+                "-o",
+                &format!("./{}/lib{}.so", subfolder, c_api_library),
+            ])
+            .status()
+            .expect("Unable to create c shared object");
+
+        // Delete the useless files
+        Command::new("rm")
+            .args(&["-r", "./clean"])
+            .status()
+            .unwrap();
+    }
 
     // Alternative to "export LD_LIBRARY_PATH=.:./src"
     println!(

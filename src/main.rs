@@ -1,4 +1,4 @@
-use amethyst::config::parse_flags;
+use amethyst::config::parse_config;
 use amethyst::parser::parse_code;
 use amethyst::turing::TuringMachine;
 use std::env;
@@ -12,15 +12,18 @@ fn main() {
     }
     let code_file = args[1].to_owned();
 
-    let config = parse_flags(args[2..].to_vec());
+    let config = parse_config(args[2..].to_vec());
 
     let code = fs::read_to_string(code_file.clone()).expect(&format!("Cannot find {}", code_file));
 
-    println!("Compiling {} with the configuration {}", code_file, config);
-    config.display_run();
+    if config.debug {
+        println!("Compiling {} with the configuration {}", code_file, config);
+        config.display_run();
+    }
     let syntax = parse_code(code);
     // println!("{:?}", syntax);
 
     let mut turing_machine = TuringMachine::make(syntax.unwrap());
-    turing_machine.run(config);
+    let result = turing_machine.run(config);
+    println!("{}", result)
 }

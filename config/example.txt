@@ -1,0 +1,5 @@
+-input AABB -o -iter 20    
+-bound   10 -d
+
+
+
