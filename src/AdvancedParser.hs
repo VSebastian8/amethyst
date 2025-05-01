@@ -226,10 +226,10 @@ statePE = (Reject <$> rejectPE)
         makeState :: Bool -> String -> [Transition] -> State
         makeState initial name transitions = State name transitions initial
 
-machinePE :: Parser Automata
+machinePE :: Parser Automaton
 machinePE =
     Machine
-      <$> (stringP "automata" *> wsE *> notNullE "expected automata name" wordPE <* ws)
+      <$> (stringP "automaton" *> wsE *> notNullE "expected automaton name" wordPE <* ws)
       <*> (charP '(' *> sepBy comma pair <* ws <* charPE ')' <* ws)
       <*> (charPE '{' *> commPE *>
           (notNullE "machine can't have 0 states" . many) (ws *> statePE <* ws <* commPE)
@@ -290,14 +290,14 @@ shiftPE = Shift
     <$> (stringP "shift" *> ws *> charPE '(' *> ws *> movePE <* ws)
     <*> (charPE ',' *> ws *> numberPE <* ws <* charPE ')')
 
-macroPE :: Parser Automata
+macroPE :: Parser Automaton
 macroPE = Macro
-    <$> (stringP "automata" *> wsE *> notNullE "expected automata name" wordPE
+    <$> (stringP "automaton" *> wsE *> notNullE "expected automaton name" wordPE
         <* ws <* charP '=' <* ws)
     <*> (complementPE <|> intersectPE <|> reunionPE <|> chainPE <|> repeatPE <|> moveMPE <|> overridePE <|> placePE <|> shiftPE)
         <* ws <* charPE ';'
 
-automataPE :: Parser Automata
+automataPE :: Parser Automaton
 automataPE = macroPE <|> machinePE
 
 programPE :: Parser Program

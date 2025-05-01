@@ -25,11 +25,11 @@ data MacroKeyword
   deriving (Show)
 
 -- Turing Machines
-data Automata
-  = Machine {getAutomataName :: String, getComponents :: [(String, String)], getStates :: [State]}
-  | Macro {getAutomataName :: String, getKeyword :: MacroKeyword}
+data Automaton
+  = Machine {getAutomatonName :: String, getComponents :: [(String, String)], getStates :: [State]}
+  | Macro {getAutomatonName :: String, getKeyword :: MacroKeyword}
   deriving (Show)
-newtype Program = Program {getAutomata :: [Automata]}
+newtype Program = Program {getAutomata :: [Automaton]}
   deriving (Show)
 
 -- Alphabet configuration

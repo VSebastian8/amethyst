@@ -48,11 +48,11 @@ extern int machine_states_len(const int *machine);
 extern int *machine_states(const int *machine);
 extern int *machine_states_i(const int *states, const int i);
 // Automata functions
-extern int automata_type(const int *automata);
-extern char *automata_name(const int *automata);
-extern int *automata_machine(const int *automata);
-extern int *automata_macro(const int *automata);
-extern void free_automata(const int *automata);
+extern int automaton_type(const int *automaton);
+extern char *automaton_name(const int *automaton);
+extern int *automaton_machine(const int *automaton);
+extern int *automaton_macro(const int *automaton);
+extern void free_automaton(const int *automaton);
 // Program | Error functions
 extern int result_type(const int *result);
 extern int result_program_len(const int *program);

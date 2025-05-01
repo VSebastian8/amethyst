@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    syntax::{AutomataType, Move, Program, StateType},
+    syntax::{AutomatonType, Move, Program, StateType},
 };
 use core::fmt::Display;
 use std::collections::{HashMap, HashSet};
@@ -129,12 +129,12 @@ impl TuringMachine {
         (*syntax.automata)
             .iter()
             .for_each(|automata_type| match automata_type {
-                AutomataType::Machine(name, machine) => {
+                AutomatonType::Machine(name, machine) => {
                     (*machine.states)
                         .iter()
                         .for_each(|state| turing_machine.add_state(state));
                 }
-                AutomataType::Macro(_, _) => todo!(),
+                AutomatonType::Macro(_, _) => todo!(),
             });
         turing_machine
     }

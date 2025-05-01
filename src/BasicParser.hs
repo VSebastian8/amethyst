@@ -155,15 +155,15 @@ shiftP = Shift
     <$> (stringP "shift" *> ws *> charP '(' *> ws *> moveP <* ws)
     <*> (charP ',' *> ws *> numberP <* ws <* charP ')')
 
-macroP :: Parser Automata
+macroP :: Parser Automaton
 macroP = Macro
-    <$> (stringP "automata" *> ws2 *> wordP <* ws <* charP '=' <* ws)
+    <$> (stringP "automaton" *> ws2 *> wordP <* ws <* charP '=' <* ws)
     <*> (complementP <|> intersectP <|> reunionP <|> chainP <|> repeatP
         <|> moveMP <|> overrideP <|> placeP <|> shiftP) <* ws <* charP ';'
 
-machineP :: Parser Automata
+machineP :: Parser Automaton
 machineP = Machine
-    <$> (stringP "automata" *> ws2 *> wordP <* ws)
+    <$> (stringP "automaton" *> ws2 *> wordP <* ws)
     <*> (charP '(' *> sepBy comma pair <* charP ')' <* ws)
     <*> (charP '{' *> some (ws *> stateP <* ws) <* charP '}')
     where
@@ -171,7 +171,7 @@ machineP = Machine
         pair :: Parser (String, String)
         pair = (,) <$> wordP <*> (ws2 *> wordP)
 
-automataP :: Parser Automata
+automataP :: Parser Automaton
 automataP = macroP <|> machineP
 
 programP :: Parser Program

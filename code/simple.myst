@@ -8,7 +8,7 @@ Input: @AABBB@
 |=> reject
 -}
 
-automata main(){
+automaton main(){
     initial state parse_a{
         A/@, R -> goright;
         @/@, N -> true;

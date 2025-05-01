@@ -98,7 +98,7 @@
 		"macros": {
 			"patterns": [
 				{
-					"begin": "(automata)\\s+([a-z0-9_]+)\\s*=\\s*(complement|intersect|reunion|chain|repeat|move|override|place|shift)\\s*\\(",
+					"begin": "(automaton)\\s+([a-z0-9_]+)\\s*=\\s*(complement|intersect|reunion|chain|repeat|move|override|place|shift)\\s*\\(",
 					"end": "\\)",
 					"patterns": [
 						{
@@ -137,7 +137,7 @@
 		"machine": {
 			"patterns": [
 				{
-					"begin": "(automata)\\s+([a-z0-9_]+)\\s*\\(",
+					"begin": "(automaton)\\s+([a-z0-9_]+)\\s*\\(",
 					"end": "\\)",
 					"patterns": [
 						{

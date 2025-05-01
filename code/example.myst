@@ -1,7 +1,7 @@
 {-A simple Turing Machine
 Notice the @ symbol and the move constants
 -}
-automata not(){
+automaton not(){
     initial state q0 {     
            @ / @ , R -> q0;   
            1 / 0 , L -> q1;   
@@ -11,15 +11,15 @@ automata not(){
 }   
    
 -- Various macros
-automata three = repeat(3, not);
-automata ov3r = override(R, 12, Z);
-automata p_lace = place("hello world");
+automaton three = repeat(3, not);
+automaton ov3r = override(R, 12, Z);
+automaton p_lace = place("hello world");
 
 {-
 This machine uses
 the previously declared not and three machines
 -}
-automata main (not n1, three n2) {    
+automaton main (not n1, three n2) {    
     initial state q0a{
         @/@,N-> n1.q0; _/@,R->qrej;    
     }

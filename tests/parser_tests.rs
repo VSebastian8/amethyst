@@ -4,7 +4,7 @@ extern "C" {
     // Always free memory after using it
     fn free_transition(transition_ptr: *mut i32);
     fn free_state(state_ptr: *mut i32);
-    fn free_automata(automata_ptr: *mut i32);
+    fn free_automaton(automaton_ptr: *mut i32);
     fn free_result(program_ptr: *mut i32);
     // Test functions
     fn test_transition(n: i32) -> *mut i32;
@@ -14,13 +14,13 @@ extern "C" {
     fn test_program(n: i32) -> *mut i32;
 }
 
-use amethyst::parser::{parse_automata, parse_result, parse_state, parse_transition};
+use amethyst::parser::{parse_automaton, parse_result, parse_state, parse_transition};
 use serial_test::serial;
 
 #[cfg(test)]
 mod tests {
     use amethyst::syntax::{
-        AutomataType, Machine, MacroType, Move, Program, State, StateType, Transition,
+        AutomatonType, Machine, MacroType, Move, Program, State, StateType, Transition,
     };
 
     use super::*;
@@ -177,13 +177,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(1);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro("comp".to_owned(), MacroType::Complement("and".to_owned()))
+            AutomatonType::Macro("comp".to_owned(), MacroType::Complement("and".to_owned()))
         )
     }
 
@@ -193,13 +193,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(2);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro(
+            AutomatonType::Macro(
                 "int".to_owned(),
                 MacroType::Intersect(Box::new(vec![
                     "not".to_owned(),
@@ -216,13 +216,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(3);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro(
+            AutomatonType::Macro(
                 "ren".to_owned(),
                 MacroType::Reunion(Box::new(vec!["and".to_owned(), "or".to_owned()]))
             )
@@ -235,13 +235,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(4);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro(
+            AutomatonType::Macro(
                 "lant".to_owned(),
                 MacroType::Chain(Box::new(vec![
                     "not".to_owned(),
@@ -258,13 +258,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(5);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro(
+            AutomatonType::Macro(
                 "repetare".to_owned(),
                 MacroType::Repeat(5, "not".to_owned())
             )
@@ -277,13 +277,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(6);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro("move8r".to_owned(), MacroType::Move(Move::Right, 8))
+            AutomatonType::Macro("move8r".to_owned(), MacroType::Move(Move::Right, 8))
         )
     }
 
@@ -293,13 +293,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(7);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro("move2l".to_owned(), MacroType::Move(Move::Left, 2))
+            AutomatonType::Macro("move2l".to_owned(), MacroType::Move(Move::Left, 2))
         )
     }
 
@@ -309,13 +309,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(8);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro(
+            AutomatonType::Macro(
                 "rescriere".to_owned(),
                 MacroType::Override(Move::Left, 5, 'V')
             )
@@ -328,13 +328,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(9);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro("scriere".to_owned(), MacroType::Place("ABCDE".to_owned()))
+            AutomatonType::Macro("scriere".to_owned(), MacroType::Place("ABCDE".to_owned()))
         )
     }
 
@@ -344,13 +344,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(10);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro("insert8".to_owned(), MacroType::Shift(Move::Right, 8))
+            AutomatonType::Macro("insert8".to_owned(), MacroType::Shift(Move::Right, 8))
         )
     }
 
@@ -360,13 +360,13 @@ mod tests {
         let macro_res;
         unsafe {
             let macro_ptr = test_macro(11);
-            macro_res = parse_automata(macro_ptr);
-            free_automata(macro_ptr);
+            macro_res = parse_automaton(macro_ptr);
+            free_automaton(macro_ptr);
         }
         print!("{:?}", macro_res);
         assert_eq!(
             macro_res,
-            AutomataType::Macro("delete19".to_owned(), MacroType::Shift(Move::Left, 19))
+            AutomatonType::Macro("delete19".to_owned(), MacroType::Shift(Move::Left, 19))
         )
     }
 
@@ -376,13 +376,13 @@ mod tests {
         let machine_res;
         unsafe {
             let machine_ptr = test_machine(1);
-            machine_res = parse_automata(machine_ptr);
-            free_automata(machine_ptr);
+            machine_res = parse_automaton(machine_ptr);
+            free_automaton(machine_ptr);
         }
         print!("{:?}", machine_res);
         assert_eq!(
             machine_res,
-            AutomataType::Machine(
+            AutomatonType::Machine(
                 "or".to_owned(),
                 Machine {
                     components: Box::new(vec![]),
@@ -452,13 +452,13 @@ mod tests {
         let machine_res;
         unsafe {
             let machine_ptr = test_machine(2);
-            machine_res = parse_automata(machine_ptr);
-            free_automata(machine_ptr);
+            machine_res = parse_automaton(machine_ptr);
+            free_automaton(machine_ptr);
         }
         print!("{:?}", machine_res);
         assert_eq!(
             machine_res,
-            AutomataType::Machine(
+            AutomatonType::Machine(
                 "even".to_owned(),
                 Machine {
                     components: Box::new(vec![]),
@@ -529,13 +529,13 @@ mod tests {
         let machine_res;
         unsafe {
             let machine_ptr = test_machine(3);
-            machine_res = parse_automata(machine_ptr);
-            free_automata(machine_ptr);
+            machine_res = parse_automaton(machine_ptr);
+            free_automaton(machine_ptr);
         }
         print!("{:?}", machine_res);
         assert_eq!(
             machine_res,
-            AutomataType::Machine(
+            AutomatonType::Machine(
                 "two_even".to_owned(),
                 Machine {
                     components: Box::new(vec![
@@ -633,7 +633,7 @@ mod tests {
             program_res,
             Ok(Program {
                 automata: Box::new(vec![
-                    AutomataType::Machine(
+                    AutomatonType::Machine(
                         "not".to_owned(),
                         Machine {
                             components: Box::new(vec![]),
@@ -668,8 +668,11 @@ mod tests {
                             ])
                         }
                     ),
-                    AutomataType::Macro("three".to_owned(), MacroType::Repeat(3, "not".to_owned())),
-                    AutomataType::Machine(
+                    AutomatonType::Macro(
+                        "three".to_owned(),
+                        MacroType::Repeat(3, "not".to_owned())
+                    ),
+                    AutomatonType::Machine(
                         "main".to_owned(),
                         Machine {
                             components: Box::new(vec![
@@ -761,21 +764,21 @@ mod tests {
             program_res,
             Ok(Program {
                 automata: Box::new(vec![
-                    AutomataType::Macro(
+                    AutomatonType::Macro(
                         "output".to_owned(),
                         MacroType::Place("HELLO-WORLD!".to_owned())
                     ),
-                    AutomataType::Macro("mv".to_owned(), MacroType::Move(Move::Right, 12)),
-                    AutomataType::Macro(
+                    AutomatonType::Macro("mv".to_owned(), MacroType::Move(Move::Right, 12)),
+                    AutomatonType::Macro(
                         "place_and_move".to_owned(),
                         MacroType::Chain(Box::new(vec!["output".to_owned(), "mv".to_owned()]))
                     ),
-                    AutomataType::Macro(
+                    AutomatonType::Macro(
                         "do3".to_owned(),
                         MacroType::Repeat(3, "place_and_move".to_owned())
                     ),
-                    AutomataType::Macro("go.back".to_owned(), MacroType::Move(Move::Left, 36)),
-                    AutomataType::Macro(
+                    AutomatonType::Macro("go.back".to_owned(), MacroType::Move(Move::Left, 36)),
+                    AutomatonType::Macro(
                         "main".to_owned(),
                         MacroType::Chain(Box::new(vec!["do3".to_owned(), "go.back".to_owned()]))
                     )

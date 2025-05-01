@@ -40,11 +40,11 @@ data MacroKeywordC
 
 data MachineC = MachineC !Int ![(CString, CString)] !Int ![Ptr StateC]
 
-data AutomataC
+data AutomatonC
   = MachC !CString !(Ptr MachineC)
   | MacroC !CString !(Ptr MacroKeywordC)
 
-data ResultC = ProgramC !Int ![Ptr AutomataC] | ErrorC !CString !Int !Int
+data ResultC = ProgramC !Int ![Ptr AutomatonC] | ErrorC !CString !Int !Int
 
 -- Storable instances for all syntax data types
 instance Storable Move where
@@ -297,7 +297,7 @@ instance Storable MachineC where
       return $ MachineC len1 components len2 states
 
 
-instance Storable AutomataC where
+instance Storable AutomatonC where
   sizeOf _ = sizeOf (undefined :: Ptr CString)
        + 2 * sizeOf (undefined :: Ptr Int)
   alignment  _ = alignment  (undefined :: Ptr CString)
@@ -337,10 +337,10 @@ instance Storable ResultC where
   poke ptr (ProgramC len automataList) = do
     poke (castPtr ptr :: Ptr Int) 0
     poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) len
-    automataArray <- mallocBytes $ length automataList * sizeOf (undefined :: Ptr AutomataC)
+    automataArray <- mallocBytes $ length automataList * sizeOf (undefined :: Ptr AutomatonC)
     poke (castPtr ptr `plusPtr` (2 * sizeOf (undefined :: Int))) automataArray
     forM_ (zip automataList [0..]) $ \(automata, i) -> do
-      pokeElemOff (castPtr automataArray :: Ptr (Ptr AutomataC)) i automata
+      pokeElemOff (castPtr automataArray :: Ptr (Ptr AutomatonC)) i automata
   poke ptr (ErrorC error line column) = do
     poke (castPtr ptr :: Ptr Int) 1
     poke (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) error
@@ -357,7 +357,7 @@ instance Storable ResultC where
         len <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int))
         automataArray <- peek (castPtr ptr `plusPtr` (2 * sizeOf (undefined :: Int)))
         automataList <- forM [0..len - 1] $ \i ->
-            peekElemOff (castPtr automataArray :: Ptr (Ptr AutomataC)) i
+            peekElemOff (castPtr automataArray :: Ptr (Ptr AutomatonC)) i
         return $ ProgramC len automataList
       1 -> do
         error <- peek (castPtr ptr `plusPtr` sizeOf (undefined :: Int)) 
@@ -394,7 +394,7 @@ encryptMacro (Override move number symbol) = OverrideC (unsafePerformIO $ new mo
 encryptMacro (Place text) = PlaceC (unsafePerformIO $ newCString  text)
 encryptMacro (Shift move number) = ShiftC (unsafePerformIO $ new move) number
 
-encryptAutomata :: Automata -> AutomataC
+encryptAutomata :: Automaton -> AutomatonC
 encryptAutomata (Machine name components states) =
   let machineName = unsafePerformIO $ newCString name
       machineComponents = map (\(s1,s2) -> (unsafePerformIO $ newCString s1,  unsafePerformIO $ newCString s2)) components
@@ -648,36 +648,36 @@ freeMachine machinePtr = do
   free machinePtr
 
 -- Automata functions
-foreign export ccall "automata_type" automataType :: Ptr AutomataC -> IO Int
+foreign export ccall "automaton_type" automataType :: Ptr AutomatonC -> IO Int
 automataType autoPtr = do
   automata <- peek autoPtr
   return $ case automata of
     MachC {} -> 0
     MacroC {} -> 1
 
-foreign export ccall "automata_name" automataName :: Ptr AutomataC -> IO CString
-automataName autoPtr = do
+foreign export ccall "automaton_name" automatonName :: Ptr AutomatonC -> IO CString
+automatonName autoPtr = do
   automata <- peek autoPtr
   return $ case automata of
     MachC name _ -> name
     MacroC name _ -> name
 
-foreign export ccall "automata_machine" automataMachine :: Ptr AutomataC -> IO (Ptr MachineC)
-automataMachine machinePtr = do
+foreign export ccall "automaton_machine" automatonMachine :: Ptr AutomatonC -> IO (Ptr MachineC)
+automatonMachine machinePtr = do
   automata <- peek machinePtr
   return $ case automata of
     MachC _ machine -> machine
     MacroC {} -> undefined
 
-foreign export ccall "automata_macro" automataMacro :: Ptr AutomataC -> IO (Ptr MacroKeywordC)
-automataMacro macroPtr = do
+foreign export ccall "automaton_macro" automatonMacro :: Ptr AutomatonC -> IO (Ptr MacroKeywordC)
+automatonMacro macroPtr = do
   automata <- peek macroPtr
   return $ case automata of
     MachC {} -> undefined
     MacroC _ macro -> macro
 
-foreign export ccall "free_automata" freeAutomata :: Ptr AutomataC -> IO ()
-freeAutomata autoPtr = do
+foreign export ccall "free_automaton" freeAutomaton :: Ptr AutomatonC -> IO ()
+freeAutomaton autoPtr = do
   automata <- peek autoPtr
   case automata of
     MachC name machinePtr -> do
@@ -703,10 +703,10 @@ resultProgramLen resultPtr = do
     ProgramC len _ -> len
     ErrorC {} -> undefined
 
-foreign export ccall "program_automata" programAutomata :: Ptr ResultC -> IO (Ptr [AutomataC])
+foreign export ccall "program_automata" programAutomata :: Ptr ResultC -> IO (Ptr [AutomatonC])
 programAutomata programPtr = peek $ castPtr programPtr `plusPtr` (2 * sizeOf (undefined :: Int))
 
-foreign export ccall "program_automata_i" programAutomataI :: Ptr (Ptr AutomataC) -> Int -> IO (Ptr AutomataC)
+foreign export ccall "program_automata_i" programAutomataI :: Ptr (Ptr AutomatonC) -> Int -> IO (Ptr AutomatonC)
 programAutomataI = peekElemOff
 
 foreign export ccall "error_string" resultError :: Ptr ResultC -> IO CString
@@ -735,7 +735,7 @@ freeResult resultPtr = do
   result <- peek resultPtr
   case result of
     ProgramC _ automataList -> do
-      forM_ automataList freeAutomata
+      forM_ automataList freeAutomaton
       automataArray <- peek (castPtr resultPtr `plusPtr` (2 * sizeOf(undefined :: Int)))
       free automataArray
     ErrorC error _ _ -> free error
@@ -754,13 +754,13 @@ testState n = new.encryptState $
   [state1, state2, state3, state4]
   !! (n - 1)
 
-foreign export ccall "test_macro" testMacro :: Int -> IO (Ptr AutomataC)
+foreign export ccall "test_macro" testMacro :: Int -> IO (Ptr AutomatonC)
 testMacro n = new.encryptAutomata $
   map(\mc -> let (Just (_, Right macro)) = runParser macroPE (Leftover mc 0 0) in macro)
   [macro1, macro2, macro3, macro4, macro5, macro6, macro7, macro8, macro9, macro10, macro11]
   !! (n - 1)
 
-foreign export ccall "test_machine" testMachine :: Int -> IO (Ptr AutomataC)
+foreign export ccall "test_machine" testMachine :: Int -> IO (Ptr AutomatonC)
 testMachine n = new.encryptAutomata $
   map(\mc -> let (Just (_, Right machine)) = runParser machinePE (Leftover mc 0 0) in machine)
   [machine1, machine2, machine3]

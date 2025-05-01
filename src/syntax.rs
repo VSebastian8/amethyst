@@ -46,12 +46,12 @@ pub struct Machine {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum AutomataType {
+pub enum AutomatonType {
     Machine(String, Machine),
     Macro(String, MacroType),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
-    pub automata: Box<Vec<AutomataType>>,
+    pub automata: Box<Vec<AutomatonType>>,
 }
