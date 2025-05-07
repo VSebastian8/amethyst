@@ -123,40 +123,71 @@ impl Default for TuringMachine {
     }
 }
 
+fn get_state_name(s: &StateType) -> &str {
+    match s {
+        StateType::Accept(name) => name,
+        StateType::Reject(name) => name,
+        StateType::State(name, _) => name,
+    }
+}
+
+fn get_automaton_name(a: &AutomatonType) -> &str {
+    match a {
+        AutomatonType::Machine(name, _) => name,
+        AutomatonType::Macro(name, _) => name,
+    }
+}
+
 impl TuringMachine {
-    pub fn make(syntax: Program) -> Self {
-        let mut turing_machine = Self::default();
-        (*syntax.automata)
+    pub fn make(syntax: Program, config: &Config) -> Result<Self, String> {
+        let automata: HashMap<String, AutomatonType> = (*syntax.automata)
             .iter()
-            .for_each(|automata_type| match automata_type {
-                AutomatonType::Machine(name, machine) => {
-                    (*machine.states)
-                        .iter()
-                        .for_each(|state| turing_machine.add_state(state));
+            .map(|automaton| (get_automaton_name(automaton).to_string(), automaton.clone()))
+            .collect();
+
+        match automata.get(&config.start) {
+            None => Err(format!("Could not find start machine {}!", config.start).to_owned()),
+            Some(automaton) => {
+                let mut turing_machine = Self::default();
+                match automaton {
+                    AutomatonType::Machine(_, machine) => {
+                        (*machine.states)
+                            .iter()
+                            .for_each(|state| turing_machine.add_state(state, ""));
+                    }
+                    AutomatonType::Macro(_, _) => todo!(),
                 }
-                AutomatonType::Macro(_, _) => todo!(),
-            });
-        turing_machine
+                Ok(turing_machine)
+            }
+        }
     }
 
-    pub fn add_state(&mut self, state_type: &StateType) {
+    pub fn add_state(&mut self, state_type: &StateType, prefix: &str) {
+        let name = get_state_name(state_type);
+        let top_level = prefix == "";
+        let state_name = if top_level {
+            name.to_owned()
+        } else {
+            prefix.to_owned() + "." + name
+        };
+
         match state_type {
-            StateType::Accept(name) => {
-                self.states.insert(name.to_owned());
-                self.accept_states.insert(name.to_owned());
+            StateType::Accept(_) => {
+                self.states.insert(state_name.to_owned());
+                self.accept_states.insert(state_name);
             }
-            StateType::Reject(name) => {
-                self.states.insert(name.to_owned());
-                self.reject_states.insert(name.to_owned());
+            StateType::Reject(_) => {
+                self.states.insert(state_name.to_owned());
+                self.reject_states.insert(state_name);
             }
-            StateType::State(name, state) => {
-                self.states.insert(name.to_owned());
-                if state.initial {
-                    self.current_state = name.to_owned();
+            StateType::State(_, state) => {
+                self.states.insert(state_name.to_owned());
+                if state.initial && top_level {
+                    self.current_state = state_name.to_owned();
                 }
                 (*state.transitions).iter().for_each(|transition| {
                     self.add_transition(
-                        name.to_owned(),
+                        state_name.to_owned(),
                         transition.read_symbol,
                         transition.new_state.to_owned(),
                         transition.write_symbol,
@@ -208,7 +239,7 @@ impl TuringMachine {
         }
     }
 
-    pub fn run(&mut self, config: Config) -> RunResult {
+    pub fn run(&mut self, config: &Config) -> RunResult {
         self.tape.initialize(config.input.to_owned());
         let mut iteration = 0;
         if config.debug {
@@ -248,7 +279,7 @@ impl TuringMachine {
         return self.exit(RunResult::ExceededTime, config);
     }
 
-    fn exit(&mut self, result: RunResult, config: Config) -> RunResult {
+    fn exit(&mut self, result: RunResult, config: &Config) -> RunResult {
         if config.debug {
             println!("");
         }

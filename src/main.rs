@@ -20,10 +20,17 @@ fn main() {
         println!("Compiling {} with the configuration {}", code_file, config);
         config.display_run();
     }
-    let syntax = parse_code(code);
+    let syntax_result = parse_code(code);
     // println!("{:?}", syntax);
 
-    let mut turing_machine = TuringMachine::make(syntax.unwrap());
-    let result = turing_machine.run(config);
-    println!("{}", result)
+    match syntax_result {
+        Err(err) => println!("{}", err),
+        Ok(syntax) => match TuringMachine::make(syntax, &config) {
+            Err(err) => println!("{}", err),
+            Ok(mut turing_machine) => {
+                let result = turing_machine.run(&config);
+                println!("{}", result)
+            }
+        },
+    }
 }
