@@ -1,0 +1,29 @@
+-- Will complement the next two bits
+automaton not(){
+    initial state one {
+        0 / 1, R -> two;
+        1 / 0, R -> two;
+        _ / _, N -> reject_this;
+    }
+    state two {
+        0 / 1, R -> accept_this;
+        1 / 0, R -> accept_this;
+        _ / _, N -> reject_this;
+    }
+    accept state accept_this;
+    reject state reject_this;
+}
+
+automaton start(not n) {
+    initial state q0 {
+        _ / _, N -> n.one;
+    }
+    state n.accept_this {
+        _ / _, L -> left;
+    }
+    state left {
+        _ / _, L -> done;
+    }
+    accept state done;
+    reject state n.reject_this;
+}

@@ -239,6 +239,26 @@
 							"name": "entity.name.function.myst"
 						}
 					}
+				},
+				{
+					"match": "(accept|reject)\\s+(state)\\s+([a-z0-9_]+)(\\.)([a-z0-9_]+)\\s*;",
+					"captures": {
+						"1": {
+							"name": "keyword.control.myst"
+						},
+						"2": {
+							"name": "keyword.declaration.state.final.myst"
+						},
+						"3": {
+							"name": "variable.parameter.myst"
+						},
+						"4": {
+							"name": "keyword.operator.dot.myst"
+						},
+						"5": {
+							"name": "entity.name.function.myst"
+						}
+					}
 				}
 			]
 		},

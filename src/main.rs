@@ -25,12 +25,15 @@ fn main() {
 
     match syntax_result {
         Err(err) => println!("{}", err),
-        Ok(syntax) => match TuringMachine::make(syntax, &config) {
-            Err(err) => println!("{}", err),
-            Ok(mut turing_machine) => {
-                let result = turing_machine.run(&config);
-                println!("{}", result)
+        Ok(syntax) => {
+            let mut turing_machine = TuringMachine::default();
+            match turing_machine.make(syntax, &config) {
+                Err(err) => println!("{}", err),
+                Ok(()) => {
+                    let result = turing_machine.run(&config);
+                    println!("{}", result)
+                }
             }
-        },
+        }
     }
 }
