@@ -1,6 +1,7 @@
 use amethyst::config::parse_config;
 use amethyst::parser::parse_code;
 use amethyst::turing::TuringMachine;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 
@@ -27,7 +28,7 @@ fn main() {
         Err(err) => println!("{}", err),
         Ok(syntax) => {
             let mut turing_machine = TuringMachine::default();
-            match turing_machine.make(syntax, &config) {
+            match turing_machine.make(syntax, &config, &mut HashSet::new()) {
                 Err(err) => println!("{}", err),
                 Ok(()) => {
                     let result = turing_machine.run(&config);

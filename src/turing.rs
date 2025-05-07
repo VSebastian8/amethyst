@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     syntax::{AutomatonType, MacroType, Move, Program, StateType},
+    tape::Tape,
 };
 use core::fmt::Display;
 use std::collections::{HashMap, HashSet};
@@ -10,7 +11,6 @@ pub enum RunResult {
     Reject,
     ExceededTime,
     ExceededMemory,
-    UnknownState(String),
 }
 
 impl Display for RunResult {
@@ -25,82 +25,7 @@ impl Display for RunResult {
             RunResult::ExceededMemory => {
                 write!(f, "Turing Machine exceeded the maximum amount of memory!")
             }
-            RunResult::UnknownState(state) => {
-                write!(f, "Could not find state {}!", state)
-            }
         }
-    }
-}
-
-pub struct Tape {
-    left: Vec<char>,
-    right: Vec<char>,
-    size: usize,
-}
-
-impl Default for Tape {
-    fn default() -> Self {
-        Self {
-            left: Vec::new(),
-            right: Vec::new(),
-            size: 0,
-        }
-    }
-}
-
-impl Display for Tape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Tape: ..@{}|{}|@..",
-            self.left
-                .iter()
-                .flat_map(|sym| ['|', *sym])
-                .collect::<String>(),
-            self.right
-                .iter()
-                .rev()
-                .flat_map(|sym| ['|', *sym])
-                .skip(1)
-                .collect::<String>()
-        )
-    }
-}
-
-impl Tape {
-    pub fn read(&self) -> char {
-        *self.right.last().unwrap_or(&'@')
-    }
-    pub fn write(&mut self, symbol: char) {
-        self.right.pop();
-        self.right.push(symbol);
-    }
-    pub fn move_left(&mut self) {
-        let character = match self.left.pop() {
-            Some(x) => x,
-            None => {
-                self.size += 1;
-                '@'
-            }
-        };
-        self.right.push(character);
-    }
-    pub fn move_right(&mut self) {
-        let character = match self.right.pop() {
-            Some(x) => x,
-            None => {
-                self.size += 1;
-                '@'
-            }
-        };
-        self.left.push(character);
-    }
-    fn initialize(&mut self, input: String) {
-        input
-            .chars()
-            .rev()
-            .for_each(|character| self.right.push(character));
-        self.size = input.len();
     }
 }
 
@@ -144,7 +69,12 @@ fn get_automaton_name(a: &AutomatonType) -> &str {
 }
 
 impl TuringMachine {
-    pub fn make(&mut self, syntax: Program, config: &Config) -> Result<(), String> {
+    pub fn make(
+        &mut self,
+        syntax: Program,
+        config: &Config,
+        visited: &mut HashSet<String>,
+    ) -> Result<(), String> {
         let automata: HashMap<String, AutomatonType> = (*syntax.automata)
             .iter()
             .map(|automaton| (get_automaton_name(automaton).to_string(), automaton.clone()))
@@ -155,20 +85,16 @@ impl TuringMachine {
             Some(automaton) => {
                 match automaton {
                     AutomatonType::Machine(name, machine) => {
+                        visited.insert(name.to_string());
                         (*machine.states)
                             .iter()
                             .for_each(|state| self.add_state(state, ""));
                         (*machine.components)
                             .iter()
                             .try_for_each(|(automaton, c_name)| {
-                                self.add_component(
-                                    c_name,
-                                    automaton,
-                                    &automata,
-                                    vec![name.to_owned()],
-                                )
+                                self.add_component(c_name, automaton, &automata, visited)
                             })?;
-                        Ok(())
+                        visited.remove(name);
                     }
                     AutomatonType::Macro(name, macro_type) => {
                         // Input state of the macro
@@ -183,9 +109,9 @@ impl TuringMachine {
                         // Macro indexed by input_state
                         self.macros
                             .insert(name.to_string() + ".input", macro_type.clone());
-                        Ok(())
                     }
                 }
+                self.validate()
             }
         }
     }
@@ -195,7 +121,7 @@ impl TuringMachine {
         prefix: &str,
         component: &String,
         automata: &HashMap<String, AutomatonType>,
-        visited: Vec<String>,
+        visited: &mut HashSet<String>,
     ) -> Result<(), String> {
         if visited.contains(component) {
             return Err(format!(
@@ -203,6 +129,7 @@ impl TuringMachine {
                 prefix
             ));
         }
+        visited.insert(component.to_string());
         match automata.get(component) {
             None => Err(format!(
                 "Could not find component {} of type {}!",
@@ -210,29 +137,24 @@ impl TuringMachine {
             )),
             Some(automaton) => {
                 match automaton {
-                    AutomatonType::Machine(name, machine) => {
+                    AutomatonType::Machine(_, machine) => {
                         (*machine.states).iter().for_each(|state| {
                             self.add_state(state, prefix);
                         });
                         (*machine.components)
                             .iter()
                             .try_for_each(|(automaton, c_name)| {
-                                self.add_component(
-                                    c_name,
-                                    automaton,
-                                    &automata,
-                                    vec![name.to_owned()],
-                                )
+                                self.add_component(c_name, automaton, &automata, visited)
                             })?;
-                        Ok(())
                     }
                     AutomatonType::Macro(name, macro_type) => {
                         // Macro indexed by input_state
                         self.macros
                             .insert(name.to_string() + ".input", macro_type.clone());
-                        Ok(())
                     }
                 }
+                visited.remove(component);
+                Ok(())
             }
         }
     }
@@ -304,6 +226,18 @@ impl TuringMachine {
         }
     }
 
+    pub fn validate(&mut self) -> Result<(), String> {
+        self.transitions.values().try_for_each(|inner| {
+            inner.values().try_for_each(|(state, _, _)| {
+                if !self.states.contains(state) {
+                    Err("Undefined state ".to_owned() + state)
+                } else {
+                    Ok(())
+                }
+            })
+        })
+    }
+
     pub fn get_transition(&self, read_symbol: char) -> (String, char, Move) {
         match self
             .transitions
@@ -342,7 +276,7 @@ impl TuringMachine {
             let read_symbol = self.tape.read();
             let (new_state, write_symbol, move_symbol) = self.get_transition(read_symbol);
             if !self.states.contains(&new_state) {
-                return RunResult::UnknownState(new_state);
+                panic!("Unknown state {}!", new_state);
             }
 
             self.current_state = new_state;
@@ -356,8 +290,8 @@ impl TuringMachine {
                 print!(" -> {}", self.current_state);
             }
             match config.bound {
-                Some(memory) => {
-                    if self.tape.size > memory {
+                Some(max_memory) => {
+                    if self.tape.memory() > max_memory {
                         return self.exit(RunResult::ExceededMemory, config);
                     }
                 }
@@ -374,18 +308,10 @@ impl TuringMachine {
             println!("");
         }
         if config.show_tape {
-            println!("{}", self.tape)
+            println!("{}", self.tape);
         }
         if config.show_output {
-            println!(
-                "Output: {}",
-                self.tape
-                    .right
-                    .iter()
-                    .rev()
-                    .filter(|sym| **sym != '@')
-                    .collect::<String>()
-            )
+            self.tape.output();
         }
         result
     }
