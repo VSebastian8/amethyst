@@ -55,6 +55,16 @@ impl Tape {
         };
         self.left.push(character);
     }
+    pub fn shift_left(&mut self) {
+        self.left.pop();
+    }
+    pub fn shift_right(&mut self) {
+        let character = match self.right.last() {
+            Some(x) => *x,
+            None => '@',
+        };
+        self.left.push(character);
+    }
     pub fn initialize(&mut self, input: String) {
         input
             .chars()

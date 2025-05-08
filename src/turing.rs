@@ -29,13 +29,33 @@ impl Display for RunResult {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum Macro {
+    Move(String, Move, u32),
+    Override(String, Move, u32, char),
+    Place(String, String),
+    Shift(String, Move, u32),
+}
+
+fn into_macro(_type_name: String, name: String, macro_type: MacroType) -> Macro {
+    match macro_type {
+        MacroType::Move(move_symbol, number) => Macro::Move(name, move_symbol, number),
+        MacroType::Override(move_symbol, number, tape_symbol) => {
+            Macro::Override(name, move_symbol, number, tape_symbol)
+        }
+        MacroType::Place(str) => Macro::Place(name, str),
+        MacroType::Shift(move_symbol, number) => Macro::Shift(name, move_symbol, number),
+        _ => todo!(),
+    }
+}
+
 pub struct TuringMachine {
     current_state: String,
     states: HashSet<String>,
     accept_states: HashSet<String>,
     reject_states: HashSet<String>,
     transitions: HashMap<String, HashMap<char, (String, char, Move)>>, // (state, read_symbol) -> (new_state, write_symbol, move)
-    macros: HashMap<String, MacroType>, // optimized macros: input state -> tape modifications -> output state
+    macros: HashMap<String, Box<Macro>>, // optimized macros: input state -> tape modifications -> output state
     tape: Tape,
 }
 
@@ -107,8 +127,14 @@ impl TuringMachine {
                         self.states.insert(name.to_string() + ".reject");
                         self.reject_states.insert(name.to_string() + ".reject");
                         // Macro indexed by input_state
-                        self.macros
-                            .insert(name.to_string() + ".input", macro_type.clone());
+                        self.macros.insert(
+                            name.to_string() + ".input",
+                            Box::new(into_macro(
+                                name.to_owned(),
+                                name.to_owned(),
+                                macro_type.clone(),
+                            )),
+                        );
                     }
                 }
                 self.validate()
@@ -147,10 +173,18 @@ impl TuringMachine {
                                 self.add_component(c_name, automaton, &automata, visited)
                             })?;
                     }
-                    AutomatonType::Macro(name, macro_type) => {
+                    AutomatonType::Macro(type_name, macro_type) => {
+                        // Input state
+                        self.states.insert(prefix.to_string() + ".input");
                         // Macro indexed by input_state
-                        self.macros
-                            .insert(name.to_string() + ".input", macro_type.clone());
+                        self.macros.insert(
+                            prefix.to_string() + ".input",
+                            Box::new(into_macro(
+                                type_name.to_owned(),
+                                prefix.to_owned(),
+                                macro_type.clone(),
+                            )),
+                        );
                     }
                 }
                 visited.remove(component);
@@ -259,6 +293,16 @@ impl TuringMachine {
         }
     }
 
+    pub fn check_final(&self) -> Option<RunResult> {
+        if self.accept_states.contains(&self.current_state) {
+            return Some(RunResult::Accept);
+        }
+        if self.reject_states.contains(&self.current_state) {
+            return Some(RunResult::Reject);
+        }
+        None
+    }
+
     pub fn run(&mut self, config: &Config) -> RunResult {
         self.tape.initialize(config.input.to_owned());
         let mut iteration = 0;
@@ -267,16 +311,30 @@ impl TuringMachine {
         }
 
         while iteration < config.iterations {
-            if self.accept_states.contains(&self.current_state) {
-                return self.exit(RunResult::Accept, config);
+            if let Some(result) = self.check_final() {
+                return self.exit(result, config);
             }
-            if self.reject_states.contains(&self.current_state) {
+
+            if let Some(macro_component) = self.macros.get(&self.current_state) {
+                if let Err(result) =
+                    self.apply_macro((**macro_component).clone(), &config, &mut iteration)
+                {
+                    return result;
+                } else {
+                    print!(" -> {}", self.current_state);
+                }
+            }
+            if let Some(result) = self.check_final() {
+                return self.exit(result, config);
+            }
+            if !self.states.contains(&self.current_state) {
                 return self.exit(RunResult::Reject, config);
             }
+
             let read_symbol = self.tape.read();
             let (new_state, write_symbol, move_symbol) = self.get_transition(read_symbol);
             if !self.states.contains(&new_state) {
-                panic!("Unknown state {}!", new_state);
+                panic!("Could not find state {}!", new_state);
             }
 
             self.current_state = new_state;
@@ -314,5 +372,72 @@ impl TuringMachine {
             self.tape.output();
         }
         result
+    }
+
+    fn apply_macro(
+        &mut self,
+        macro_component: Macro,
+        config: &Config,
+        iteration: &mut u32,
+    ) -> Result<(), RunResult> {
+        match macro_component {
+            Macro::Move(name, move_symbol, num) => {
+                *iteration += num;
+                if *iteration > config.iterations {
+                    return Err(RunResult::ExceededTime);
+                }
+                match move_symbol {
+                    Move::Left => (0..num).for_each(|_| self.tape.move_left()),
+                    Move::Right => (0..num).for_each(|_| self.tape.move_right()),
+                    Move::Neutral => {}
+                }
+                self.current_state = name + ".accept";
+                Ok(())
+            }
+            Macro::Override(name, move_symbol, num, symbol) => {
+                *iteration += num;
+                if *iteration > config.iterations {
+                    return Err(RunResult::ExceededTime);
+                }
+                match move_symbol {
+                    Move::Left => (0..num).for_each(|_| {
+                        self.tape.write(symbol);
+                        self.tape.move_left();
+                    }),
+                    Move::Right => (0..num).for_each(|_| {
+                        self.tape.write(symbol);
+                        self.tape.move_right();
+                    }),
+                    Move::Neutral => self.tape.write(symbol),
+                }
+                self.current_state = name + ".accept";
+                Ok(())
+            }
+            Macro::Place(name, tape_symbols) => {
+                *iteration += tape_symbols.len() as u32;
+                if *iteration > config.iterations {
+                    return Err(RunResult::ExceededTime);
+                }
+                tape_symbols.chars().for_each(|symbol| {
+                    self.tape.write(symbol);
+                    self.tape.move_right();
+                });
+                self.current_state = name + ".accept";
+                Ok(())
+            }
+            Macro::Shift(name, move_symbol, num) => {
+                *iteration += num;
+                if *iteration > config.iterations {
+                    return Err(RunResult::ExceededTime);
+                }
+                match move_symbol {
+                    Move::Left => (0..num).for_each(|_| self.tape.shift_left()),
+                    Move::Right => (0..num).for_each(|_| self.tape.shift_right()),
+                    Move::Neutral => {}
+                }
+                self.current_state = name + ".accept";
+                Ok(())
+            }
+        }
     }
 }

@@ -4,7 +4,7 @@
 - Macros implementation as real automata
 - Testing framework
 - Color theme for VSCode
-- More macros
+- More macros (find, compare, copy, random?)
 - Support for nondeterminism
 - Way to customize tape alphabet
 - Import functionality

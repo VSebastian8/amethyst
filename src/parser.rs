@@ -189,18 +189,18 @@ pub fn parse_macro(macro_ptr: *mut i32) -> MacroType {
                     .to_str()
                     .expect("Error converting CString to String")
                     .to_owned();
-                MacroType::Repeat(number, automaton)
+                MacroType::Repeat(number as u32, automaton)
             }
             5 => {
                 let number = macro_number(macro_ptr);
                 let move_symbol = parse_move(macro_move(macro_ptr));
-                MacroType::Move(move_symbol, number)
+                MacroType::Move(move_symbol, number as u32)
             }
             6 => {
                 let number = macro_number(macro_ptr);
                 let move_symbol = parse_move(macro_move(macro_ptr));
                 let override_symbol = macro_symbol(macro_ptr) as u8 as char;
-                MacroType::Override(move_symbol, number, override_symbol)
+                MacroType::Override(move_symbol, number as u32, override_symbol)
             }
             7 => {
                 let macro_text = CStr::from_ptr(macro_string(macro_ptr))
@@ -212,7 +212,7 @@ pub fn parse_macro(macro_ptr: *mut i32) -> MacroType {
             8 => {
                 let number = macro_number(macro_ptr);
                 let move_symbol = parse_move(macro_move(macro_ptr));
-                MacroType::Shift(move_symbol, number)
+                MacroType::Shift(move_symbol, number as u32)
             }
             _ => panic!("Unexpected macro keyword type!"),
         }
