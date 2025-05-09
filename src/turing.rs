@@ -92,59 +92,26 @@ impl TuringMachine {
     pub fn make(
         &mut self,
         syntax: Program,
-        config: &Config,
+        start: &String,
         visited: &mut HashSet<String>,
     ) -> Result<(), String> {
         let automata: HashMap<String, AutomatonType> = (*syntax.automata)
             .iter()
             .map(|automaton| (get_automaton_name(automaton).to_string(), automaton.clone()))
             .collect();
-
-        match automata.get(&config.start) {
-            None => Err(format!("Could not find start machine {}!", config.start).to_owned()),
-            Some(automaton) => {
-                match automaton {
-                    AutomatonType::Machine(name, machine) => {
-                        visited.insert(name.to_string());
-                        (*machine.states)
-                            .iter()
-                            .for_each(|state| self.add_state(state, ""));
-                        (*machine.components)
-                            .iter()
-                            .try_for_each(|(automaton, c_name)| {
-                                self.add_component(c_name, automaton, &automata, visited)
-                            })?;
-                        visited.remove(name);
-                    }
-                    AutomatonType::Macro(name, macro_type) => {
-                        // Input state of the macro
-                        self.states.insert(name.to_string() + ".input");
-                        self.current_state = name.to_string() + ".input";
-                        // Accept state of the macro
-                        self.states.insert(name.to_string() + ".accept");
-                        self.accept_states.insert(name.to_string() + ".accept");
-                        // Reject state of the macro
-                        self.states.insert(name.to_string() + ".reject");
-                        self.reject_states.insert(name.to_string() + ".reject");
-                        // Macro indexed by input_state
-                        self.macros.insert(
-                            name.to_string() + ".input",
-                            Box::new(into_macro(
-                                name.to_owned(),
-                                name.to_owned(),
-                                macro_type.clone(),
-                            )),
-                        );
-                    }
-                }
-                self.validate()
-            }
+        if !automata.contains_key(start) {
+            return Err(format!(
+                "Could not find start machine {}!",
+                start.to_string()
+            ));
         }
+        self.add_component("".to_string(), start, &automata, visited)?;
+        self.validate()
     }
 
     pub fn add_component(
         &mut self,
-        prefix: &str,
+        prefix: String,
         component: &String,
         automata: &HashMap<String, AutomatonType>,
         visited: &mut HashSet<String>,
@@ -153,32 +120,51 @@ impl TuringMachine {
             return Err(format!(
                 "Cycles are not allowed in components. Error for component {}!",
                 prefix
+                    .chars()
+                    .take(prefix.chars().count() - 1)
+                    .collect::<String>()
             ));
         }
         visited.insert(component.to_string());
         match automata.get(component) {
             None => Err(format!(
                 "Could not find component {} of type {}!",
-                prefix, component
+                prefix
+                    .chars()
+                    .take(prefix.chars().count() - 1)
+                    .collect::<String>(),
+                component
             )),
             Some(automaton) => {
                 match automaton {
                     AutomatonType::Machine(_, machine) => {
-                        (*machine.states).iter().for_each(|state| {
-                            self.add_state(state, prefix);
-                        });
                         (*machine.components)
                             .iter()
                             .try_for_each(|(automaton, c_name)| {
-                                self.add_component(c_name, automaton, &automata, visited)
+                                self.add_component(
+                                    prefix.to_owned() + c_name + ".",
+                                    automaton,
+                                    &automata,
+                                    visited,
+                                )
                             })?;
+                        (*machine.states).iter().for_each(|state| {
+                            self.add_state(state, prefix.to_owned());
+                        });
                     }
                     AutomatonType::Macro(type_name, macro_type) => {
-                        // Input state
-                        self.states.insert(prefix.to_string() + ".input");
+                        // Input state of the macro
+                        self.states.insert(prefix.to_string() + "input");
+                        self.current_state = prefix.to_string() + "input";
+                        // Accept state of the macro
+                        self.states.insert(prefix.to_string() + "accept");
+                        self.accept_states.insert(prefix.to_string() + "accept");
+                        // Reject state of the macro
+                        self.states.insert(prefix.to_string() + "reject");
+                        self.reject_states.insert(prefix.to_string() + "reject");
                         // Macro indexed by input_state
                         self.macros.insert(
-                            prefix.to_string() + ".input",
+                            prefix.to_string() + "input",
                             Box::new(into_macro(
                                 type_name.to_owned(),
                                 prefix.to_owned(),
@@ -193,31 +179,25 @@ impl TuringMachine {
         }
     }
 
-    pub fn add_state(&mut self, state_type: &StateType, prefix: &str) {
+    pub fn add_state(&mut self, state_type: &StateType, prefix: String) {
         let name = get_state_name(state_type);
-        let top_level = prefix == "";
-        let state_name = if top_level {
-            name.to_owned()
-        } else {
-            prefix.to_owned() + "." + name
-        };
+        let state_name = prefix.to_owned() + name;
 
         match state_type {
             StateType::Accept(_) => {
-                if top_level {
-                    self.states.insert(state_name.to_owned());
-                    self.accept_states.insert(state_name);
-                }
+                self.states.insert(state_name.to_owned());
+                self.accept_states.insert(state_name);
             }
             StateType::Reject(_) => {
-                if top_level {
-                    self.states.insert(state_name.to_owned());
-                    self.reject_states.insert(state_name);
-                }
+                self.states.insert(state_name.to_owned());
+                self.reject_states.insert(state_name);
             }
             StateType::State(_, state) => {
                 self.states.insert(state_name.to_owned());
-                if state.initial && top_level {
+                self.accept_states.remove(&state_name);
+                self.reject_states.remove(&state_name);
+
+                if state.initial {
                     self.current_state = state_name.to_owned();
                 }
                 (*state.transitions).iter().for_each(|transition| {
@@ -227,7 +207,7 @@ impl TuringMachine {
                         &transition.new_state,
                         transition.write_symbol,
                         transition.move_symbol,
-                        prefix,
+                        prefix.to_owned(),
                     )
                 });
             }
@@ -241,13 +221,9 @@ impl TuringMachine {
         new_state: &String,
         write_symbol: char,
         move_symbol: Move,
-        prefix: &str,
+        prefix: String,
     ) {
-        let new_state_name = if prefix == "" {
-            new_state.to_owned()
-        } else {
-            prefix.to_string() + "." + new_state
-        };
+        let new_state_name = prefix + new_state;
         match self.transitions.get_mut(&from) {
             None => {
                 let mut inner_map = HashMap::new();
@@ -327,9 +303,6 @@ impl TuringMachine {
             if let Some(result) = self.check_final() {
                 return self.exit(result, config);
             }
-            if !self.states.contains(&self.current_state) {
-                return self.exit(RunResult::Reject, config);
-            }
 
             let read_symbol = self.tape.read();
             let (new_state, write_symbol, move_symbol) = self.get_transition(read_symbol);
@@ -391,7 +364,7 @@ impl TuringMachine {
                     Move::Right => (0..num).for_each(|_| self.tape.move_right()),
                     Move::Neutral => {}
                 }
-                self.current_state = name + ".accept";
+                self.current_state = name + "accept";
                 Ok(())
             }
             Macro::Override(name, move_symbol, num, symbol) => {
@@ -410,7 +383,7 @@ impl TuringMachine {
                     }),
                     Move::Neutral => self.tape.write(symbol),
                 }
-                self.current_state = name + ".accept";
+                self.current_state = name + "accept";
                 Ok(())
             }
             Macro::Place(name, tape_symbols) => {
@@ -422,7 +395,7 @@ impl TuringMachine {
                     self.tape.write(symbol);
                     self.tape.move_right();
                 });
-                self.current_state = name + ".accept";
+                self.current_state = name + "accept";
                 Ok(())
             }
             Macro::Shift(name, move_symbol, num) => {
@@ -435,7 +408,7 @@ impl TuringMachine {
                     Move::Right => (0..num).for_each(|_| self.tape.shift_right()),
                     Move::Neutral => {}
                 }
-                self.current_state = name + ".accept";
+                self.current_state = name + "accept";
                 Ok(())
             }
         }

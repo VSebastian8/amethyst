@@ -28,7 +28,7 @@ fn main() {
         Err(err) => println!("{}", err),
         Ok(syntax) => {
             let mut turing_machine = TuringMachine::default();
-            match turing_machine.make(syntax, &config, &mut HashSet::new()) {
+            match turing_machine.make(syntax, &config.start, &mut HashSet::new()) {
                 Err(err) => println!("{}", err),
                 Ok(()) => {
                     let result = turing_machine.run(&config);

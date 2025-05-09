@@ -14,16 +14,27 @@ automaton not(){
     reject state reject_this;
 }
 
-automaton start(not n) {
+automaton middle(not n) {
     initial state q0 {
         _ / _, N -> n.one;
     }
     state n.accept_this {
+        _ / _, N -> good;
+    }
+    accept state good;
+    reject state n.reject_this; -- parser error? warning? bad practice to let component names exposed?
+}
+
+automaton start(middle m) {
+    initial state q0 {
+        _ / _, N -> m.q0;
+    }
+    state m.good {
         _ / _, L -> left;
     }
     state left {
         _ / _, L -> done;
     }
     accept state done;
-    reject state n.reject_this;
+    reject state m.n.reject_this; -- bug fix?
 }
