@@ -4,14 +4,12 @@ automaton move_back = move(L, 4);
 automaton delete = shift(L, 2);
 automaton insert = shift(R, 3);
 automaton main(o8 first, delete d2, insert i3, p p, move_back second) {
-    initial state q0 {
-        @ / @, N -> p.input;
-    }
-    state p.accept { _ / _, N -> first.input;}
+    initial state q0 -> p.input;
+    state p.accept -> first.input;
     state first.accept {
         _ / _, N -> second.input;
     }
-    state second.accept { _ / _, N -> d2.input;}
+    state second.accept -> d2.input;
     state d2.accept { _ / _, N -> i3.input;}
     accept state i3.accept;
 }

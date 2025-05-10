@@ -12,16 +12,21 @@ transition7 = "A/B,R-> starE;" -- error forbidden symbol
 transition8 = "A/B,N -> qstare " -- error expected ;
 
 -- State Examples
-state1, state2, state3, state4, state5, state6, state7, state8, state9 :: String
+state1, state2, state3, state4, state5, state6, state7, state8, state9, state10, state11, state12, state13, state14 :: String
 state1 = "initial state nume{ B / B, L -> nume; --State done\n} "
 state2 = "accept state okk;"
 state3 = "reject state nu_ok;"
 state4 = "state renume {{-state begins-}A/A,N->nume; --a transition\n {-comment\nin\nstate-}  H/B,R->renume;}"
-state5 = "acceptstate bad;" -- error missing space
-state6 = "reject statebad;" -- error missing space
-state7 = "state {A/A,R->q;}" -- error missing state name
-state8 = "initial state q;" -- error missing {
-state9 = "initial state q2{}" -- error zero transitions
+state5 = "state first -> second;"
+state6 = "initial state q0 -> x.accept;"
+state7 = "acceptstate bad;" -- error missing space
+state8 = "reject statebad;" -- error missing space
+state9 = "state {A/A,R->q;}" -- error missing state name
+state10 = "initial state q;" -- error missing {
+state11 = "initial state q2{}" -- error zero transitions
+state12 = "state ab -> Bcd" -- error forbidden symbol in word
+state13 = "state ab -> ;" -- error missing state name
+state14 = "initial q0 -> q1;" -- error missing state keyword
 
 -- Macro Examples
 macro1, macro2, macro3, macro4, macro5, macro6, macro7, macro8, macro9, macro10, macro11, macro12, macro13, macro14 :: String

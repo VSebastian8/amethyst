@@ -751,7 +751,7 @@ testTransition n = new.encryptTransition $
 foreign export ccall "test_state" testState :: Int -> IO (Ptr StateC)
 testState n = new.encryptState $
   map(\st -> let (Just (_, Right state)) = runParser statePE (Leftover st 0 0) in state)
-  [state1, state2, state3, state4]
+  [state1, state2, state3, state4, state5, state6]
   !! (n - 1)
 
 foreign export ccall "test_macro" testMacro :: Int -> IO (Ptr AutomatonC)

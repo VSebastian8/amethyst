@@ -205,8 +205,10 @@ stringPE str = stringP str
 statePE :: Parser State
 statePE = (Reject <$> rejectPE)
       <|> (Accept <$> acceptPE)
-      <|> (makeState True <$> initialPE <*> trPE)
+      <|> (arrowState False <$> normalArrowPE <*> newStatePE)
+      <|> (arrowState True <$> initialArrowPE <*> newStatePE)
       <|> (makeState False <$> normalPE <*> trPE)
+      <|> (makeState True <$> initialPE <*> trPE)
       <|> notCharP '}' *> Parser (Just . makeError "expected state keyword - found " . lookLit)
     where
         rejectPE = stringP "reject" *> wsE
@@ -215,16 +217,22 @@ statePE = (Reject <$> rejectPE)
         acceptPE = stringP "accept" *> wsE
                 *> stringPE "state" *> wsE
                 *> notNullE "expected state name" wordPE <* ws <* charPE ';'
-        initialPE = stringP "initial" *> wsE
-                *> stringPE "state" *> wsE
-                *> notNullE "expected state name" wordPE <* ws
         normalPE = stringP "state" *> wsE
                 *> notNullE "expected state name" wordPE <* ws
+        initialPE = stringP "initial" *> wsE
+                *> normalPE
         trPE = charPE '{' *> commPE *>
             (notNullE "state can't have 0 transitions" . many) (transitionPE <*  commPE)
             <* ws <* charPE '}'
+        normalArrowPE = stringP "state" *> wsE
+            *> notNullE "expected state name" wordPE <* ws
+        initialArrowPE = stringP "initial" *> wsE *> normalArrowPE
+        newStatePE = stringP "->" *> ws *> notNullE "expected state name" wordPE <* ws <* charPE ';'
+
         makeState :: Bool -> String -> [Transition] -> State
         makeState initial name transitions = State name transitions initial
+        arrowState :: Bool -> String -> String -> State 
+        arrowState initial name newState = State name [Transition '_' '_' N newState] initial
 
 machinePE :: Parser Automaton
 machinePE =

@@ -173,6 +173,60 @@ mod tests {
 
     #[test]
     #[serial]
+    pub fn test_state_5() {
+        let state;
+        unsafe {
+            let state_ptr = test_state(5);
+            state = parse_state(state_ptr);
+            free_state(state_ptr);
+        }
+        print!("{:?}", state);
+        assert_eq!(
+            state,
+            StateType::State(
+                "first".to_owned(),
+                State {
+                    initial: false,
+                    transitions: Box::new(vec![Transition {
+                        read_symbol: '_',
+                        write_symbol: '_',
+                        move_symbol: Move::Neutral,
+                        new_state: "second".to_owned()
+                    }])
+                }
+            )
+        )
+    }
+
+    #[test]
+    #[serial]
+    pub fn test_state_6() {
+        let state;
+        unsafe {
+            let state_ptr = test_state(6);
+            state = parse_state(state_ptr);
+            free_state(state_ptr);
+        }
+        print!("{:?}", state);
+        assert_eq!(
+            state,
+            StateType::State(
+                "q0".to_owned(),
+                State {
+                    initial: true,
+                    transitions: Box::new(vec![Transition {
+                        read_symbol: '_',
+                        write_symbol: '_',
+                        move_symbol: Move::Neutral,
+                        new_state: "x.accept".to_owned()
+                    }])
+                }
+            )
+        )
+    }
+
+    #[test]
+    #[serial]
     pub fn test_macro_1() {
         let macro_res;
         unsafe {
