@@ -37,4 +37,4 @@ allowedNameSymbols :: [Char]
 allowedNameSymbols = ['a' .. 'z'] ++ "0123456789_."
 
 allowedTapeSymbols :: [Char]
-allowedTapeSymbols = ['A' .. 'Z'] ++ "0123456789" ++ "!@#$%^&*()-+=/?_:"
+allowedTapeSymbols = ['A' .. 'Z'] ++ "0123456789" ++ "!@#$%^&*[]-+=/?_:"

@@ -6,10 +6,19 @@
 			"include": "#comments"
 		},
 		{
-			"include": "#macros"
+			"include": "#strings"
 		},
 		{
-			"include": "#automata"
+			"include": "#keywords"
+		},
+		{
+			"include": "#symbols"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#entities"
 		}
 	],
 	"repository": {
@@ -52,680 +61,102 @@
 				}
 			]
 		},
-		"argument": {
+		"keywords": {
 			"patterns": [
 				{
-					"include": "#strings"
+					"name": "keyword.declaration.myst",
+					"match": "\\b(automaton|state)\\b"
 				},
 				{
-					"match": ",",
-					"name": "punctuation.comma.myst"
+					"name": "keyword.control.myst",
+					"match": "(?<!\\.)\\b(initial|accept|reject)\\b"
 				},
 				{
-					"match": "(?<=\\(|,)\\s*([0-9]+)",
-					"captures": {
-						"1": {
-							"name": "constant.numeric.myst"
-						}
-					}
+					"name": "keyword.declaration.myst",
+					"match": "\\b(complement|intersect|reunion|chain|repeat|move|override|place|shift)\\b"
 				},
 				{
-					"match": "(?<=\\(|,)\\s*(L|R|N)",
-					"captures": {
-						"1": {
-							"name": "constant.language.move.myst"
-						}
-					}
+					"name": "keyword.operator.write.myst",
+					"match": "(\\/)"
 				},
 				{
-					"match": "(?<=\\(|,)\\s*([A-Z])(?=\\)|,|\\ )",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.symbol.myst"
-						}
-					}
+					"name": "keyword.operator.arrow.myst",
+					"match": "(\\-\\>)"
 				},
 				{
-					"match": "(?<=\\(|,)\\s*([a-z0-9_]+)",
+					"name": "keyword.operator.move.myst",
+					"match": "(\\,)"
+				},
+				{
+					"name": "keyword.operator.equals.myst",
+					"match": "(\\=)"
+				},
+				{
+					"name": "punctuation.definition.symbol.blank.myst",
+					"match": "(@)"
+				},
+				{
+					"name": "punctuation.definition.symbol.wildcard.myst",
+					"match": "(_)"
+				},
+				{
+					"name": "punctuation.definition.symbol.wildcard.myst",
+					"match": "(\\.)"
+				}
+			]
+		},
+		"symbols": {
+			"patterns": [
+				{
+					"name": "punctuation.definition.symbol",
+					"match": "([A-Z0-9\\!\\#\\$\\%\\^&\\*\\[\\]\\-\\+\\=\\/\\?])(?=\\s*\\/)"
+				},
+				{
+					"name": "punctuation.definition.symbol",
+					"match": "(?<=\\/\\s*)([A-Z0-9\\!\\#\\$\\%\\^&\\*\\[\\]\\-\\+\\=\\/\\?])"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.language.move.myst",
+					"match": "\\b(L|R|N)\\b"
+				},
+				{
+					"name": "constant.numeric.myst",
+					"match": "\\b([0-9]+)\\b"
+				}
+			]
+		},
+		"entities": {
+			"patterns": [
+				{
+					"name": "entity.name.function.myst",
+					"match": "\\b([a-z][a-z0-9_]*)\\b(?=\\s*(\\(|\\{|\\=))"
+				},
+				{
+					"match": "(?<=\\(|,)\\s*([a-z][a-z0-9_\\.]*)\\s+([a-z][a-z0-9_]*)",
 					"captures": {
 						"1": {
 							"name": "entity.name.type.myst"
-						}
-					}
-				}
-			]
-		},
-		"macros": {
-			"patterns": [
-				{
-					"begin": "(automaton)\\s+([a-z0-9_]+)\\s*=\\s*(complement|intersect|reunion|chain|repeat|move|override|place|shift)\\s*\\(",
-					"end": "\\)",
-					"patterns": [
-						{
-							"include": "#argument"
-						}
-					],
-					"captures": {
-						"1": {
-							"name": "keyword.declaration.myst"
-						},
-						"2": {
-							"name": "entity.name.function.myst"
-						},
-						"3": {
-							"name": "keyword.other.macro.myst"
-						}
-					}
-				}
-			]
-		},
-		"component": {
-			"patterns": [
-				{
-					"match": "(?<=\\(|,)\\s*([a-z0-9_]+)\\s+([a-z0-9_]+)",
-					"captures": {
-						"1": {
-							"name": "entity.name.type.myst"
 						},
 						"2": {
 							"name": "variable.parameter.myst"
 						}
 					}
-				}
-			]
-		},
-		"machine": {
-			"patterns": [
-				{
-					"begin": "(automaton)\\s+([a-z0-9_]+)\\s*\\(",
-					"end": "\\)",
-					"patterns": [
-						{
-							"include": "#component"
-						}
-					],
-					"beginCaptures": {
-						"1": {
-							"name": "keyword.declaration.myst"
-						},
-						"2": {
-							"name": "entity.name.function.myst"
-						}
-					}
-				}
-			]
-		},
-		"machine-body": {
-			"patterns": [
-				{
-					"begin": "(?<=\\))\\s*\\{",
-					"end": "\\}",
-					"patterns": [
-						{
-							"include": "#comments"
-						},
-						{
-							"include": "#state"
-						}
-					]
-				}
-			]
-		},
-		"automata": {
-			"patterns": [
-				{
-					"include": "#machine"
 				},
 				{
-					"include": "#machine-body"
-				}
-			]
-		},
-		"state": {
-			"patterns": [
-				{
-					"begin": "(?<!accept|reject)\\s+(initial )?\\s*(state)\\s+([a-z0-9_]+)\\s*{",
-					"end": "}",
-					"beginCaptures": {
-						"1": {
-							"name": "keyword.control.initial.myst"
-						},
-						"2": {
-							"name": "keyword.declaration.state.myst"
-						},
-						"3": {
-							"name": "entity.name.function.myst"
-						}
-					},
-					"patterns": [
-						{
-							"include": "#transition"
-						}
-					]
+					"name": "entity.name.type.myst",
+					"match": "(?<=\\(|,)\\s*([a-z][a-z0-9_]*)"
 				},
 				{
-					"begin": "(?<!accept|reject)\\s+(state)\\s+([a-z0-9_]+)(\\.)([a-z0-9_]+)\\s*{",
-					"end": "}",
-					"beginCaptures": {
-						"1": {
-							"name": "keyword.declaration.state.myst"
-						},
-						"2": {
-							"name": "variable.parameter.myst"
-						},
-						"3": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"4": {
-							"name": "entity.name.function.myst"
-						}
-					},
-					"patterns": [
-						{
-							"include": "#transition"
-						}
-					]
+					"name": "variable.parameter.myst",
+					"match": "\\b([a-z][a-z0-9_]*)(?=\\.)"
 				},
 				{
-					"match": "(accept|reject)\\s+(state)\\s+([a-z0-9_]+)\\s*;",
-					"captures": {
-						"1": {
-							"name": "keyword.control.myst"
-						},
-						"2": {
-							"name": "keyword.declaration.state.final.myst"
-						},
-						"3": {
-							"name": "entity.name.function.myst"
-						}
-					}
-				},
-				{
-					"match": "(accept|reject)\\s+(state)\\s+([a-z0-9_]+)(\\.)([a-z0-9_]+)\\s*;",
-					"captures": {
-						"1": {
-							"name": "keyword.control.myst"
-						},
-						"2": {
-							"name": "keyword.declaration.state.final.myst"
-						},
-						"3": {
-							"name": "variable.parameter.myst"
-						},
-						"4": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"5": {
-							"name": "entity.name.function.myst"
-						}
-					}
-				}
-			]
-		},
-		"transition": {
-			"comment": "very inefficient but wanted to tag @ and _ differently",
-			"patterns": [
-				{
-					"comment": "normal transition without @ or _",
-					"match": "([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(/)\\s*([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "entity.name.function.myst"
-						},
-						"8": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "component.state transition without @ or _",
-					"match": "([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(/)\\s*([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)(\\.)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "variable.parameter.myst"
-						},
-						"8": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"9": {
-							"name": "entity.name.function.myst"
-						},
-						"10": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "normal transition with @ as read symbol",
-					"match": "(\\@)\\s*(/)\\s*([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "entity.name.function.myst"
-						},
-						"8": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "component.state transition with @ as read symbol",
-					"match": "(\\@)\\s*(/)\\s*([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)(\\.)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "variable.parameter.myst"
-						},
-						"8": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"9": {
-							"name": "entity.name.function.myst"
-						},
-						"10": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "normal transition with @ as write symbol",
-					"match": "([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(/)\\s*(\\@)\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "entity.name.function.myst"
-						},
-						"8": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "component.state transition with @ as write symbol",
-					"match": "([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(/)\\s*(\\@)\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)(\\.)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "variable.parameter.myst"
-						},
-						"8": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"9": {
-							"name": "entity.name.function.myst"
-						},
-						"10": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "normal transition without @ as read and write",
-					"match": "(\\@)\\s*(/)\\s*(\\@)\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "entity.name.function.myst"
-						},
-						"8": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "component.state transition with @ as read and write",
-					"match": "(\\@)\\s*(/)\\s*(\\@)\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)(\\.)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "variable.parameter.myst"
-						},
-						"8": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"9": {
-							"name": "entity.name.function.myst"
-						},
-						"10": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "normal transition with _ as read symbol",
-					"match": "(_)\\s*(/)\\s*([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.wildcard.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "entity.name.function.myst"
-						},
-						"8": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "component.state transition with _ as read symbol",
-					"match": "(_)\\s*(/)\\s*([A-Z0-9\\!\\#\\$\\%\\^&\\*\\(\\)\\-\\+\\=\\/\\?])\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)(\\.)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.wildcard.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.symbol.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "variable.parameter.myst"
-						},
-						"8": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"9": {
-							"name": "entity.name.function.myst"
-						},
-						"10": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "normal transition with _ as read symbol and @ as write symbol",
-					"match": "(_)\\s*(/)\\s*(@)\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.wildcard.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "entity.name.function.myst"
-						},
-						"8": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "component.state transition with _ as read symbol and @ as write symbol",
-					"match": "(_)\\s*(/)\\s*(@)\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)(\\.)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.wildcard.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.blank.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "variable.parameter.myst"
-						},
-						"8": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"9": {
-							"name": "entity.name.function.myst"
-						},
-						"10": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "normal transition with _ as both read and write symbols",
-					"match": "(_)\\s*(/)\\s*(_)\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.wildcard.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.wildcard.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "entity.name.function.myst"
-						},
-						"8": {
-							"name": "punctuation.semi.myst"
-						}
-					}
-				},
-				{
-					"comment": "component.state transition with _ as both read and write symbols",
-					"match": "(_)\\s*(/)\\s*(_)\\s*(,)\\s*(L|R|N)\\s*(\\-\\>)\\s*([a-z0-9_]+)(\\.)\\s*([a-z0-9_]+)\\s*(;)",
-					"captures": {
-						"1": {
-							"name": "punctuation.definition.wildcard.myst"
-						},
-						"2": {
-							"name": "keyword.operator.write.myst"
-						},
-						"3": {
-							"name": "punctuation.definition.wildcard.myst"
-						},
-						"4": {
-							"name": "keyword.operator.move.myst"
-						},
-						"5": {
-							"name": "constant.language.move.myst"
-						},
-						"6": {
-							"name": "keyword.operator.arrow.myst"
-						},
-						"7": {
-							"name": "variable.parameter.myst"
-						},
-						"8": {
-							"name": "keyword.operator.dot.myst"
-						},
-						"9": {
-							"name": "entity.name.function.myst"
-						},
-						"10": {
-							"name": "punctuation.semi.myst"
-						}
-					}
+					"name": "entity.name.function.myst",
+					"match": "(?<=(\\-\\>\\s*|state\\s*|\\.))\\b([a-z][a-z0-9_]*)\\b"
 				}
 			]
 		}
