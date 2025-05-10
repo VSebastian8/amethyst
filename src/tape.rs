@@ -1,5 +1,6 @@
 use core::fmt::Display;
 
+#[derive(Debug)]
 pub struct Tape {
     left: Vec<char>,
     right: Vec<char>,

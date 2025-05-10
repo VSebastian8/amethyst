@@ -1,0 +1,26 @@
+{-
+Accepts regular language: (A^n)(B^m), n & m >= 0
+Input: ..@|A|A|A|B|B|@..
+           ^
+Output: accept
+Input: ..@|B|A|B|A|@
+           ^
+Output: reject
+-}
+automaton a1() {
+    initial state q0 {
+        A / @, R -> q0;
+        B / B, N -> q1;
+        @ / @, N -> acc;
+        _ / _, N -> rej;
+    }
+    state q1 {
+        B / @, R -> q1;
+        @ / @, N -> acc;
+        _ / _, N -> rej;
+    }
+    accept state acc;
+    reject state rej;
+}
+
+automaton a1_comp = complement(a1);
