@@ -24,3 +24,43 @@ automaton a1() {
 }
 
 automaton a1_comp = complement(a1);
+
+{-
+Accepts regular language: (B^x)(A^n)(B^y), n >= 0, x & y <= 1
+Input: ..@|B|A|A|A|B|@..
+           ^
+Output: accept
+Input: ..@|B|A|A|B|B|@
+           ^
+Output: reject
+-}
+automaton a2() {
+    initial state q0 {
+        B / @, R -> q1;
+        _ / _, N -> q1;
+    }
+    state q1 {
+        A / @, R -> q1;
+        B / @, R -> q2;
+        @ / @, N -> acc;
+        _ / _, N -> rej;
+    }
+    state q2 {
+        @ / @, N -> acc;
+        _ / _, N -> rej;
+    }
+    accept state acc;
+    reject state rej;
+}
+
+automaton re = reunion(a1, a2, a1);
+automaton int = intersect(a1, a2);
+automaton ch = chain(a1, a1, a2);
+automaton rep = repeat(3, a1);
+automaton main(re reun){
+    initial state q_ini {
+        _ / _, N -> reun.input;
+    }
+    accept state reun.accept;
+    reject state reun.reject;
+}

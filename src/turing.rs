@@ -36,6 +36,10 @@ pub enum Macro {
     Place(String, String),
     Shift(String, Move, u32),
     Complement(String, TuringMachine),
+    Reunion(String, Vec<TuringMachine>),
+    Intersect(String, Vec<TuringMachine>),
+    Chain(String, Vec<TuringMachine>),
+    Repeat(String, u32, TuringMachine),
 }
 
 fn into_macro(
@@ -54,11 +58,77 @@ fn into_macro(
         MacroType::Shift(move_symbol, number) => Macro::Shift(name, move_symbol, number),
         MacroType::Complement(component) => {
             let mut tm = TuringMachine::default();
-            tm.add_component(name.to_string(), &component, automata, visited)?;
+            tm.add_component(
+                name.to_string() + &component + ".",
+                &component,
+                automata,
+                visited,
+            )?;
             tm.validate()?;
             Macro::Complement(name, tm)
         }
-        _ => todo!(),
+        MacroType::Reunion(components) => Macro::Reunion(
+            name.to_owned(),
+            (*components)
+                .iter()
+                .map(|component| {
+                    let mut tm = TuringMachine::default();
+                    tm.add_component(
+                        name.to_string() + component + ".",
+                        &component,
+                        automata,
+                        visited,
+                    )?;
+                    tm.validate()?;
+                    Ok(tm)
+                })
+                .collect::<Result<Vec<TuringMachine>, String>>()?,
+        ),
+        MacroType::Intersect(components) => Macro::Intersect(
+            name.to_owned(),
+            (*components)
+                .iter()
+                .map(|component| {
+                    let mut tm = TuringMachine::default();
+                    tm.add_component(
+                        name.to_string() + component + ".",
+                        &component,
+                        automata,
+                        visited,
+                    )?;
+                    tm.validate()?;
+                    Ok(tm)
+                })
+                .collect::<Result<Vec<TuringMachine>, String>>()?,
+        ),
+        MacroType::Chain(components) => Macro::Chain(
+            name.to_owned(),
+            (*components)
+                .iter()
+                .map(|component| {
+                    let mut tm = TuringMachine::default();
+                    tm.add_component(
+                        name.to_string() + component + ".",
+                        &component,
+                        automata,
+                        visited,
+                    )?;
+                    tm.validate()?;
+                    Ok(tm)
+                })
+                .collect::<Result<Vec<TuringMachine>, String>>()?,
+        ),
+        MacroType::Repeat(num, component) => {
+            let mut tm = TuringMachine::default();
+            tm.add_component(
+                name.to_string() + &component + ".",
+                &component,
+                automata,
+                visited,
+            )?;
+            tm.validate()?;
+            Macro::Repeat(name, num, tm)
+        }
     })
 }
 
@@ -72,7 +142,7 @@ pub struct TuringMachine {
     macros: HashMap<String, Box<Macro>>, // optimized macros: input state -> tape modifications -> output state
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TuringState {
     current_state: String,
     tape: Tape,
@@ -281,15 +351,10 @@ impl TuringMachine {
         })
     }
 
-    pub fn get_transition(&self, tstate: &TuringState, read_symbol: char) -> (String, char, Move) {
-        match self
-            .transitions
-            .get(&tstate.current_state)
-            .unwrap()
-            .get(&read_symbol)
-        {
+    pub fn get_transition(&self, state: &String, read_symbol: char) -> (String, char, Move) {
+        match self.transitions.get(state).unwrap().get(&read_symbol) {
             Some(tuple) => (*tuple).clone(),
-            None => match self.transitions.get(&self.initial_state).unwrap().get(&'_') {
+            None => match self.transitions.get(state).unwrap().get(&'_') {
                 None => ("reject".to_owned(), '@', Move::Neutral),
                 Some(&(ref new_state, write_symbol, move_symbol)) => {
                     if write_symbol != '_' {
@@ -341,7 +406,11 @@ impl TuringMachine {
                 let applied = self.apply_macro(tstate, &macro_component, &config);
                 match applied {
                     Err(result) => return result,
-                    Ok(()) => print!(" -> {}", &tstate.current_state),
+                    Ok(()) => {
+                        if config.debug {
+                            print!(" -> {}", &tstate.current_state)
+                        }
+                    }
                 }
             }
             if let Some(result) = self.check_final(tstate) {
@@ -349,7 +418,8 @@ impl TuringMachine {
             }
 
             let read_symbol = tstate.tape.read();
-            let (new_state, write_symbol, move_symbol) = self.get_transition(tstate, read_symbol);
+            let (new_state, write_symbol, move_symbol) =
+                self.get_transition(&tstate.current_state, read_symbol);
             if !self.states.contains(&new_state) {
                 panic!("Could not find state {}!", new_state);
             }
@@ -444,17 +514,91 @@ impl TuringMachine {
             }
             Macro::Complement(name, tm) => {
                 tstate.current_state = tm.initial_state.to_owned();
+                if config.debug {
+                    print!(" -> {}", &tstate.current_state)
+                }
                 match tm.run(tstate, config) {
-                    RunResult::Accept => {
-                        tstate.current_state = name.to_string() + "reject";
-                        Ok(())
-                    }
-                    RunResult::Reject => {
-                        tstate.current_state = name.to_string() + "accept";
-                        Ok(())
-                    }
+                    RunResult::Accept => tstate.current_state = name.to_string() + "reject",
+                    RunResult::Reject => tstate.current_state = name.to_string() + "accept",
                     r => return Err(r),
                 }
+                Ok(())
+            }
+            Macro::Reunion(name, tms) => {
+                let old_tstate = tstate.clone();
+                for tm in tms {
+                    *tstate = old_tstate.clone();
+                    tstate.current_state = tm.initial_state.to_owned();
+                    if config.debug {
+                        print!(" -> {}", &tstate.current_state)
+                    }
+                    match tm.run(tstate, config) {
+                        RunResult::Accept => {
+                            tstate.current_state = name.to_string() + "accept";
+                            return Ok(());
+                        }
+                        RunResult::Reject => {}
+                        r => return Err(r),
+                    }
+                }
+                tstate.current_state = name.to_string() + "reject";
+                Ok(())
+            }
+            Macro::Intersect(name, tms) => {
+                let old_tstate = tstate.clone();
+                for tm in tms {
+                    *tstate = old_tstate.clone();
+                    tstate.current_state = tm.initial_state.to_owned();
+                    if config.debug {
+                        print!(" -> {}", &tstate.current_state)
+                    }
+                    match tm.run(tstate, config) {
+                        RunResult::Accept => {}
+                        RunResult::Reject => {
+                            tstate.current_state = name.to_string() + "reject";
+                            return Ok(());
+                        }
+                        r => return Err(r),
+                    }
+                }
+                tstate.current_state = name.to_string() + "accept";
+                Ok(())
+            }
+            Macro::Chain(name, tms) => {
+                for tm in tms {
+                    tstate.current_state = tm.initial_state.to_owned();
+                    if config.debug {
+                        print!(" -> {}", &tstate.current_state)
+                    }
+                    match tm.run(tstate, config) {
+                        RunResult::Accept => {}
+                        RunResult::Reject => {
+                            tstate.current_state = name.to_string() + "reject";
+                            return Ok(());
+                        }
+                        r => return Err(r),
+                    }
+                }
+                tstate.current_state = name.to_string() + "accept";
+                Ok(())
+            }
+            Macro::Repeat(name, num, tm) => {
+                for _ in 0..*num {
+                    tstate.current_state = tm.initial_state.to_owned();
+                    if config.debug {
+                        print!(" -> {}", &tstate.current_state)
+                    }
+                    match tm.run(tstate, config) {
+                        RunResult::Accept => {}
+                        RunResult::Reject => {
+                            tstate.current_state = name.to_string() + "reject";
+                            return Ok(());
+                        }
+                        r => return Err(r),
+                    }
+                }
+                tstate.current_state = name.to_string() + "accept";
+                Ok(())
             }
         }
     }
