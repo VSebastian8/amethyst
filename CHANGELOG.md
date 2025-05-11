@@ -12,11 +12,11 @@
 
 ### Backlog
 
-- Color themes for VSCode
 - Standard library
 
 ### Implemented
 
+- Color themes for VSCode
 - Component graph cycle detection
 - Structural warnings and errors
 - Macros implementation (optimized)

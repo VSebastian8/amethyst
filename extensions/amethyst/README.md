@@ -16,4 +16,4 @@ File association: `.myst`
 
 ## Example
 
-![syntax highlighting example](./code.png "Highlighted Code")
+![syntax highlighting example](https://github.com/VSebastian8/amethyst/tree/master/extensions/amethyst/code.png "Highlighted Code")

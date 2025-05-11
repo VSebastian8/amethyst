@@ -1,0 +1,36 @@
+{
+  "name": "amethyst-moon",
+  "displayName": "Amethyst Moon",
+  "description": "Dark theme with violet accents and extra features for the amethyst programming language.",
+  "version": "0.0.3",
+  "publisher": "VSebastian8",
+  "repository": {
+    "type": "git",
+    "link": "https://github.com/VSebastian8/amethyst/tree/master/extensions/amethyst-moon"
+  },
+  "icon": "amethyst-moon-logo.png",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "keywords": [
+    "theme",
+    "amethyst",
+    "moon",
+    "dark",
+    "vibrant",
+    "turing",
+    "turing machine"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Amethyst Moon",
+        "uiTheme": "vs-dark",
+        "path": "./themes/Amethyst Moon-color-theme.json"
+      }
+    ]
+  }
+}

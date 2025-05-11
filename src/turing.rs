@@ -188,7 +188,7 @@ fn get_automaton_name(a: &AutomatonType) -> &str {
         AutomatonType::Macro(name, _) => name,
     }
 }
-
+//
 impl TuringMachine {
     pub fn make(
         &mut self,

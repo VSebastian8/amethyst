@@ -1,0 +1,40 @@
+{
+  "name": "amethyst-sun",
+  "displayName": "Amethyst Sun",
+  "description": "Light theme with violet accents and extra features for the amethyst programming language.",
+  "version": "0.0.1",
+  "publisher": "VSebastian8",
+  "repository": {
+    "type": "git",
+    "link": "https://github.com/VSebastian8/amethyst/tree/master/extensions/amethyst-sun"
+  },
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "icon": "amethyst-sun-logo.png",
+  "categories": [
+    "Themes"
+  ],
+  "keywords": [
+    "color",
+    "theme",
+    "amethyst",
+    "sun",
+    "light",
+    "vibrant",
+    "solarized",
+    "turing",
+    "pink",
+    "violet",
+    "turing machine"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Amethyst Sun",
+        "uiTheme": "vs",
+        "path": "./themes/Amethyst Sun-color-theme.json"
+      }
+    ]
+  }
+}

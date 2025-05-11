@@ -1,11 +1,17 @@
 {
-  "name": "amethyst",
+  "name": "amethyst-syntax",
   "displayName": "Amethyst Syntax Highlighting",
   "description": "Syntax Highlighting for Amethyst, the Turing Machine Programming Language",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.98.0"
+    "vscode": "^1.60.0"
   },
+  "publisher": "VSebastian8",
+  "repository": {
+    "type": "git",
+    "link": "https://github.com/VSebastian8/amethyst/tree/master/extensions/amethyst"
+  },
+  "icon": "icons/amethyst-logo.png",
   "categories": [
     "Programming Languages"
   ],
@@ -29,6 +35,24 @@
         "scopeName": "source.myst",
         "path": "./syntaxes/amethyst.tmLanguage.json"
       }
+    ],
+    "iconThemes": [
+      {
+        "id": "amethyst-icon",
+        "label": "Icon for .myst files",
+        "path": "./file-icons/icon-theme.json"
+      }
     ]
-  }
+  },
+  "keywords": [
+    "amethyst",
+    "turing",
+    "turing machine",
+    "programming",
+    "color",
+    "support",
+    "syntax",
+    "syntax highlighting",
+    "programming language"
+  ]
 }

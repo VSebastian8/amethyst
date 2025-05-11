@@ -1,0 +1,13 @@
+{
+    "iconDefinitions": {
+        "amethyst-icon": {
+            "iconPath": "./../icons/amethyst-simple-icon.svg"
+        }
+    },
+    "fileExtensions": {
+        "myst": "amethyst-icon"
+    },
+    "fileNames": {},
+    "languageIds": {},
+    "folderNames": {}
+}

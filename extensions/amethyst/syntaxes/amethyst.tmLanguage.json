@@ -9,6 +9,9 @@
 			"include": "#strings"
 		},
 		{
+			"include": "#chars"
+		},
+		{
 			"include": "#keywords"
 		},
 		{
@@ -58,6 +61,14 @@
 				{
 					"name": "constant.character.escape.myst",
 					"match": "\\\\."
+				}
+			]
+		},
+		"chars": {
+			"patterns": [
+				{
+					"name": "string.quoted.single.myst",
+					"match": "('.')"
 				}
 			]
 		},
