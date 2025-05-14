@@ -1,0 +1,5 @@
+automaton main(){
+    initial state q0 {
+        0 / b -> huh;
+    }
+}

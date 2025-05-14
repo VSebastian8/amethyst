@@ -1,33 +1,10 @@
 use crate::{
     config::Config,
+    result::RunResult,
     syntax::{AutomatonType, MacroType, Move, Program, StateType},
     tape::Tape,
 };
-use core::fmt::Display;
 use std::collections::{HashMap, HashSet};
-
-pub enum RunResult {
-    Accept,
-    Reject,
-    ExceededTime,
-    ExceededMemory,
-}
-
-impl Display for RunResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RunResult::Accept => write!(f, "Accepted!"),
-            RunResult::Reject => write!(f, "Rejected!"),
-            RunResult::ExceededTime => write!(
-                f,
-                "Turing Machine exceeded the maximum number of iterations!"
-            ),
-            RunResult::ExceededMemory => {
-                write!(f, "Turing Machine exceeded the maximum amount of memory!")
-            }
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum Macro {

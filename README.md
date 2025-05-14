@@ -5,13 +5,13 @@
 ### Run a .myst file
 
 ```bash
-cargo run -- code/add.myst -input 110+01 -o -limit 500 -tape
+cargo cargo run --bin geode run code/add.myst -input 110+01 -o -limit 500 -tape
 ```
 
 Or you can specify the compilation flags in a separate file:
 
 ```bash
-cargo run -- code/simple.myst -c config/example.txt -start verify
+cargo cargo run --bin geode r code/simple.myst -c config/example.txt -start verify
 ```
 
 ### Requirements

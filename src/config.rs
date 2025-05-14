@@ -1,6 +1,6 @@
+use colored::*;
 use core::fmt::Display;
 use std::fs;
-
 pub struct Config {
     // Starting configuration of the tape
     pub input: String,
@@ -98,48 +98,49 @@ impl ConfigBuilder {
     }
 }
 
+fn display_warning(msg: &str) {
+    println!("{}", msg.yellow())
+}
+
 fn parse_flags(args: Vec<String>) -> ConfigBuilder {
     let mut configuration = ConfigBuilder::default();
     let mut flags = args.iter();
 
     while let Some(flag) = flags.next() {
         match flag.as_str() {
-            "-input" | "-i" => configuration.set_input(
-                flags
-                    .next()
-                    .expect("Please provide an input to the Turing Machine")
-                    .to_owned(),
-            ),
+            "-input" | "-i" => match flags.next() {
+                None => display_warning("Please provide an input to the Turing Machine!"),
+                Some(input) => configuration.set_input(input.to_owned()),
+            },
             "-output" | "-o" => configuration.set_output(true),
             "-tape" | "-t" => configuration.set_tape(true),
-            "-start" | "-s" => configuration.set_start(
-                flags
-                    .next()
-                    .expect("Please provide the name of the Turing Machine to start from")
-                    .to_owned(),
-            ),
-            "-bound" | "-b" => configuration.set_bound(
-                flags
-                    .next()
-                    .expect("Please provide the upper bound of the tape")
-                    .parse::<usize>()
-                    .expect("Please provide a positive number for the bound"),
-            ),
-            "-iterations" | "-iter" | "-limit" | "-l" => configuration.set_iterations(
-                flags
-                    .next()
-                    .expect("Please provide the maximum number of tape iterations")
-                    .parse::<u32>()
-                    .expect("Please provide a positive number for the iterations"),
-            ),
+            "-start" | "-s" => match flags.next() {
+                None => display_warning("Please provide the name of the Turing Machine to start!"),
+                Some(start) => configuration.set_start(start.to_owned()),
+            },
+            "-bound" | "-b" => match flags.next() {
+                None => display_warning("Please provide the upper bound of the tape!"),
+                Some(bound) => match bound.parse::<usize>() {
+                    Err(_) => display_warning("Please provide a positive number for the bound!"),
+                    Ok(cells) => configuration.set_bound(cells),
+                },
+            },
+            "-iterations" | "-iter" | "-limit" | "-l" => match flags.next() {
+                None => display_warning("Please provide the maximum number of tape iterations!"),
+                Some(steps) => match steps.parse::<u32>() {
+                    Err(_) => {
+                        display_warning("Please provide a positive number for the iterations!")
+                    }
+                    Ok(limit) => configuration.set_iterations(limit),
+                },
+            },
             "-debug" | "-d" => configuration.set_debug(true),
-            "-config" | "-c" => configuration.set_config_file(
-                flags
-                    .next()
-                    .expect("Please provide the path to a configuration file")
-                    .to_owned(),
-            ),
-            _ => println!("Unknown flag {}", flag),
+            "-config" | "-c" => match flags.next() {
+                None => display_warning("Please provide the path to a configuration file!"),
+
+                Some(config) => configuration.set_config_file(config.to_owned()),
+            },
+            _ => display_warning(format!("Unknown flag {}", flag).as_str()),
         }
     }
     configuration
@@ -163,8 +164,13 @@ pub fn parse_config(args: Vec<String>) -> Config {
     match console_config.config_file {
         None => console_config.build(),
         Some(ref config_file) => {
-            let content = fs::read_to_string(config_file.clone())
-                .expect(&format!("Cannot find config file {}", config_file));
+            let content = match fs::read_to_string(config_file.clone()) {
+                Ok(content) => content,
+                Err(_) => {
+                    display_warning(format!("Cannot find config file {}!", config_file).as_str());
+                    return console_config.build();
+                }
+            };
             let file_config =
                 parse_flags(content.split_whitespace().map(|s| s.to_owned()).collect());
             merge_configs(console_config, file_config).build()
