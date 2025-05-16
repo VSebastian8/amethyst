@@ -1,5 +1,5 @@
+use amethyst::basic_parser::parse_program;
 use amethyst::config::parse_config;
-use amethyst::parser::parse_code;
 use amethyst::turing::TuringMachine;
 use colored::*;
 use std::collections::HashSet;
@@ -93,10 +93,11 @@ fn turing_command(args: Vec<String>, run: bool) {
         println!("Compiling {} with the configuration {}", code_file, config);
     }
 
-    let syntax_result = parse_code(code);
+    let syntax_result = parse_program(code.as_str());
     match syntax_result {
-        Err(err) => println!("{}", err.red().bold()),
-        Ok(syntax) => {
+        None => println!("An error has occured"),
+        Some(syntax) => {
+            // println!("{:?}", syntax);
             let mut turing_machine = TuringMachine::default();
             match turing_machine.make(&syntax, &config.start, &mut HashSet::new()) {
                 Err(err) => println!("{}", err.red().bold()),

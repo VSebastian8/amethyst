@@ -1,15 +1,15 @@
-use std::process::Command;
-
 fn main() {
-    let subfolder = "lib";
-    let haskell_file = "ParserFFI.hs";
-    let c_file = "parser_api.c";
-    let haskell_library = "amethyst_parser";
-    let c_api_library = "amethyst_parser_api";
+    let parser = "rust";
 
-    let parser_changed = false;
+    if parser == "haskell" {
+        use std::process::Command;
 
-    if parser_changed {
+        let subfolder = "lib";
+        let haskell_file = "ParserFFI.hs";
+        let c_file = "parser_api.c";
+        let haskell_library = "amethyst_parser";
+        let c_api_library = "amethyst_parser_api";
+
         // Erases last build and prepares the lib folder for the shared objects
         Command::new("rm").args(&["-r", "./lib"]).status().unwrap();
         Command::new("mkdir").args(&[subfolder]).status().unwrap();
@@ -62,38 +62,36 @@ fn main() {
             .args(&["-r", "./clean"])
             .status()
             .unwrap();
+
+        // Alternative to "export LD_LIBRARY_PATH=.:./src"
+        println!(
+            "{}",
+            format!(
+                "cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../../{}",
+                subfolder
+            )
+        );
+        // Also the relative path from the tests directory
+        println!(
+            "{}",
+            format!(
+                "cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../../../{}",
+                subfolder
+            )
+        );
+        // Specify the libraries' location
+        println!(
+            "{}",
+            format!("cargo:rustc-link-search=native=./{}/", subfolder)
+        );
+        // Specify all the shared libraries
+        println!(
+            "{}",
+            format!("cargo:rustc-link-lib=dylib={}", haskell_library)
+        );
+        println!(
+            "{}",
+            format!("cargo:rustc-link-lib=dylib={}", c_api_library)
+        );
     }
-
-    // Alternative to "export LD_LIBRARY_PATH=.:./src"
-    println!(
-        "{}",
-        format!(
-            "cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../../{}",
-            subfolder
-        )
-    );
-    // Also the relative path from the tests directory
-    println!(
-        "{}",
-        format!(
-            "cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../../../{}",
-            subfolder
-        )
-    );
-    // Specify the libraries' location
-    println!(
-        "{}",
-        format!("cargo:rustc-link-search=native=./{}/", subfolder)
-    );
-    // Specify all the shared libraries
-    println!(
-        "{}",
-        format!("cargo:rustc-link-lib=dylib={}", haskell_library)
-    );
-    println!(
-        "{}",
-        format!("cargo:rustc-link-lib=dylib={}", c_api_library)
-    );
-
-    // println!("cargo:warning=Building the project...");
 }

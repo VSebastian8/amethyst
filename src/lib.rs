@@ -1,3 +1,4 @@
+pub mod basic_parser;
 pub mod config;
 pub mod parser;
 pub mod result;
