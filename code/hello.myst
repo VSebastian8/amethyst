@@ -1,0 +1,18 @@
+automaton move_back6 = move(L, 6);
+automaton place_hello = place("HELLO,");
+
+automaton main(move_back6 m, place_hello say){
+    initial state q0 {
+        _ / _ , N -> m.input;
+    }
+    state m.accept -> say.input;
+    state say.accept {
+        @ / !, L -> go_left;
+        _ / _, R -> say.accept;
+    }
+    state go_left {
+        @ / @, R -> done;
+        _ / _, L -> go_left;
+    }
+    accept state done;
+}

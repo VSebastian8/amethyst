@@ -2,25 +2,39 @@
 
 **Amethyst** is a **programming language** where you write everything using **Turing machines**. Its goal is to help grow the understanding of this popular and powerful **computational model**.
 
-### Run a .myst file
+### Installation
+
+If you have `cargo`, you can install the binary directly from crates.io
+
+```
+cargo install amethyst_geode
+```
+
+There are also precompiled binaries available for [Windows, macOS, and Linux](https://github.com/VSebastian8/amethyst/releases).
+
+### Running a .myst file
 
 ```bash
-cargo cargo run --bin geode run code/add.myst -input 110+01 -o -limit 500 -tape
+geode run code/add.myst -input 110+01 -o -limit 500 -tape
 ```
 
 Or you can specify the compilation flags in a separate file:
 
 ```bash
-cargo cargo run --bin geode r code/simple.myst -c config/example.txt -start verify
+geode r code/simple.myst -c config/example.txt -start verify
 ```
 
-### Requirements
+### Run configuration flags
 
-- ghc (for Haskell)
-- gcc (for C)
-- cargo (for Rust)
-
-For more information on the syntax, check out [SyntaxExamples](src/SyntaxExamples.hs)
+|         Flag         | Shorthand  |       Argument       | Default |
+| :------------------: | :--------: | :------------------: | :-----: |
+|        -input        |     -i     | initial tape content |    @    |
+|       -output        |     -o     |                      |  false  |
+|        -tape         |     -t     |                      |  false  |
+|        -bound        |     -b     | max number of cells  |  none   |
+| -iterations / -limit | -iter / -l | max number of steps  |  1200   |
+|        -debug        |     -d     |                      |  false  |
+|       -config        |     -c     |  path/to/config.txt  |         |
 
 ### Wildcard symbol
 
@@ -73,37 +87,33 @@ The following macros are present so far:
   - a right shift inserts a number of cells to the right of the current position (all of the cells to the right of the head shift right)
   - a left shift deletes a number of cells to the left of the current position (all of the cells to the right of the head shift left)
 
-### Compilation
+### Example
+
+![hello world example](./assets/hello.png)
+
+<!-- for when amethyst syntax highlighting is supported
+```amethyst
+automaton move_back6 = move(L, 6);
+automaton place_hello = place("HELLO,");
+automaton main(move_back6 m, place_hello say){
+    initial state q0 {
+        _ / _ , N -> m.input;
+    }
+    state m.accept -> say.input;
+    state say.accept {
+        @ / !, L -> go_left;
+        _ / _, R -> say.accept;
+    }
+    state go_left {
+        @ / @, R -> done;
+        _ / _, L -> go_left;
+    }
+    accept state done;
+}
+``` -->
 
 ```bash
-cargo run -- [path/to/file.myst] [automaton=main]
+geode run code/hello.myst -input WORLD -debug -output -tape
 ```
 
-### Run configuration flags
-
-|         Flag         | Shorthand  |       Argument       | Default |
-| :------------------: | :--------: | :------------------: | :-----: |
-|        -input        |     -i     | initial tape content |    @    |
-|       -output        |     -o     |                      |  false  |
-|        -tape         |     -t     |                      |  false  |
-|        -bound        |     -b     | max number of cells  |  none   |
-| -iterations / -limit | -iter / -l | max number of steps  |  1200   |
-|        -debug        |     -d     |                      |  false  |
-|       -config        |     -c     |  path/to/config.txt  |         |
-
-### Checking for memory leaks
-
-```bash
-cargo run
-valgrind target/debug/amethyst --leak-check=full -s
-```
-
-### Testing the FFI parser
-
-```bash
-cargo test --test parser_tests -- --nocapture --test-threads=1
-```
-
-> Runs all tests from tests/parser_tests.rs \
-> Shows the output of println! \
-> Runs tests sequentially (memory issues if run in parallel)
+You can find more code examples [here](https://github.com/VSebastian8/amethyst/tree/master/code)
