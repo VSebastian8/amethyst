@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 
-const VERSION: &str = "1.2.0";
+const VERSION: &str = "1.2.1";
 
 fn display_help() {
     println!("geode {}", VERSION);

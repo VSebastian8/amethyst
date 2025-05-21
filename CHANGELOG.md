@@ -14,7 +14,7 @@
 
 - Standard library
 
-## v1.2.0 - 2025-05-21
+## v1.2.1 - 2025-05-21
 
 - `Command Line Interface` for the `geode` interpreter
 - `Color themes` for VSCode

@@ -1,6 +1,6 @@
 [package]
 name = "amethyst_geode"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 authors = ["VSebastian8"]
 license = "MPL-2.0"
@@ -20,3 +20,5 @@ serial_test = "0.5"
 ctor = "0.1"
 [dependencies]
 colored = "3.0.0"
+[profile.release]
+opt-level = 1

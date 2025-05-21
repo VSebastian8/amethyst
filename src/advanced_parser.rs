@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::syntax::{
     AutomatonType, Machine, MacroType, Move, Program, State, StateType, Transition,
 };
@@ -267,6 +265,10 @@ impl<'a, T: 'a> Parser<'a, T> {
                 let mut results = Vec::new();
                 let mut current_input = input;
                 while let Some((next_input, res)) = (self.parse)(current_input) {
+                    // Prevent infinite loop if parser does not consume input
+                    if next_input == current_input {
+                        break;
+                    }
                     match res {
                         Err(msg) => return Some((next_input, Err(msg))),
                         Ok(x) => {
@@ -291,14 +293,6 @@ impl<'a, T: 'a> Parser<'a, T> {
         C: Fn(&T) -> bool + 'a,
     {
         self.condition(cond).many()
-    }
-
-    // span parser with custom error
-    fn span_e<C>(self, cond: C, msg: &'a str) -> Parser<'a, Vec<T>>
-    where
-        C: Fn(&T) -> bool + 'a,
-    {
-        self.condition_e(cond, msg).many()
     }
 
     // raise an error if the parser fails
@@ -906,9 +900,12 @@ fn automaton_pe<'a>() -> Parser<'a, AutomatonType> {
 // make sure there's no more input left to consume
 fn done_p<'a>() -> Parser<'a, ()> {
     Parser {
-        parse: Box::new(move |input| match input.look() {
-            Some(_) => None,
-            _ => Some((input, Ok(()))),
+        parse: Box::new(move |input| {
+            if input.input == "" {
+                Some((input, Ok(())))
+            } else {
+                None
+            }
         }),
     }
 }
@@ -917,8 +914,8 @@ fn done_p<'a>() -> Parser<'a, ()> {
 fn program_pe<'a>() -> Parser<'a, Program> {
     ws3()
         .right(automaton_pe())
-        .left(ws3())
         .many()
+        .left(ws3())
         .left(done_p().raise_literal("", "Expected automaton found unexpected keyword ", ""))
         .fmap(move |automata| Program {
             automata: Box::new(automata),
