@@ -14,14 +14,13 @@ extern "C" {
     fn test_program(n: i32) -> *mut i32;
 }
 
-use amethyst::parser::{parse_automaton, parse_result, parse_state, parse_transition};
-use serial_test::serial;
-
 #[cfg(test)]
 mod tests {
+    use super::parser::{parse_automaton, parse_result, parse_state, parse_transition};
     use amethyst::syntax::{
         AutomatonType, Machine, MacroType, Move, Program, State, StateType, Transition,
     };
+    use serial_test::serial;
 
     use super::*;
 

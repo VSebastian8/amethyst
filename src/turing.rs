@@ -365,10 +365,10 @@ impl TuringMachine {
             println!("");
         }
         if config.show_tape {
-            println!("{}", turing_state.tape);
+            turing_state.tape.show_tape();
         }
         if config.show_output {
-            turing_state.tape.output();
+            turing_state.tape.show_output();
         }
         result
     }

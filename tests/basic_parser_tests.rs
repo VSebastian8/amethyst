@@ -1,10 +1,8 @@
-use amethyst::basic_parser::parse_move;
-use amethyst::syntax::*;
 
 #[cfg(test)]
 mod basic_tests {
-    use amethyst::basic_parser::{parse_automaton, parse_state, parse_transition};
-    use super::*;
+    use amethyst::syntax::*;
+    use amethyst::basic_parser::{parse_automaton, parse_state, parse_transition,parse_move};
 
     #[test]
     pub fn test_moves() {

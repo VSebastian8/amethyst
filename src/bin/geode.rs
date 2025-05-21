@@ -1,4 +1,4 @@
-use amethyst::basic_parser::parse_program;
+use amethyst::advanced_parser::parse_program;
 use amethyst::config::parse_config;
 use amethyst::turing::TuringMachine;
 use colored::*;
@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 
-const VERSION: &str = "1.0.0";
+const VERSION: &str = "1.2.0";
 
 fn display_help() {
     println!("geode {}", VERSION);
@@ -89,14 +89,41 @@ fn turing_command(args: Vec<String>, run: bool) {
     };
 
     let config = parse_config(args[2..].to_vec());
+
     if config.debug {
         println!("Compiling {} with the configuration {}", code_file, config);
     }
 
     let syntax_result = parse_program(code.as_str());
     match syntax_result {
-        None => println!("An error has occured"),
-        Some(syntax) => {
+        Err((leftover, msg)) => {
+            let spaces = " ".repeat((leftover.row + 1).to_string().len() + 1);
+            println!("{}", msg.red().bold());
+            println!(
+                "{}{} {}:{}:{}",
+                spaces,
+                "-->".bright_blue(),
+                code_file,
+                leftover.row + 1,
+                leftover.col
+            );
+            println!("{}{}", spaces, "|".bright_blue());
+            println!(
+                "{} {} {}",
+                (leftover.row + 1).to_string().bright_blue(),
+                "|".bright_blue(),
+                code.lines().nth(leftover.row as usize).unwrap()
+            );
+            println!(
+                "{}{} {}{}",
+                spaces,
+                "|".bright_blue(),
+                " ".repeat(leftover.col as usize),
+                "^".red().bold()
+            );
+            println!("{}{}", spaces, "|".bright_blue());
+        }
+        Ok(syntax) => {
             // println!("{:?}", syntax);
             let mut turing_machine = TuringMachine::default();
             match turing_machine.make(&syntax, &config.start, &mut HashSet::new()) {
@@ -125,6 +152,9 @@ fn main() {
     }
     let command = args[1].to_owned();
     match command.as_str() {
+        "--version" | "--v" | "version" | "v" => {
+            println!("geode {}", VERSION);
+        }
         "run" | "r" => {
             if args.len() <= 2 {
                 display_run_help();

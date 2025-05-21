@@ -1,3 +1,4 @@
+use colored::*;
 use core::fmt::Display;
 
 #[derive(Debug, Clone)]
@@ -19,7 +20,7 @@ impl Display for Tape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Tape: ..@{}|{}|@..",
+            "..@{}|{}|@..",
             self.left
                 .iter()
                 .flat_map(|sym| ['|', *sym])
@@ -75,14 +76,39 @@ impl Tape {
     pub fn memory(&self) -> usize {
         self.left.len() + self.right.len()
     }
-    pub fn output(&self) {
+    pub fn show_output(&self) {
+        println!("{}", "Output:".bright_blue());
+        let output = self
+            .right
+            .iter()
+            .rev()
+            .filter(|sym| **sym != '@')
+            .collect::<String>();
         println!(
-            "Output: {}",
+            "{}",
+            if output == "" {
+                "@".to_string()
+            } else {
+                output
+            }
+        );
+    }
+    pub fn show_tape(&self) {
+        println!("{}", "Tape:".bright_blue());
+        let header = self.left.len();
+        println!(
+            "..@{}|{}|@..",
+            self.left
+                .iter()
+                .flat_map(|sym| ['|', *sym])
+                .collect::<String>(),
             self.right
                 .iter()
                 .rev()
-                .filter(|sym| **sym != '@')
+                .flat_map(|sym| ['|', *sym])
+                .skip(1)
                 .collect::<String>()
-        )
+        );
+        println!("{}^", " ".repeat(header * 2 + 4));
     }
 }

@@ -1,2 +1,5 @@
 examples-linking-rust-and-haskell/** linguist-documentation
 tests/** linguist-documentation
+extensions/** linguist-documentation
+config/** linguist-documentation
+src/ffi_tests.rs linguist-documentation

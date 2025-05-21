@@ -1,9 +1,8 @@
-#![allow(dead_code)]
 use crate::syntax::{AutomatonType, Machine, MacroType, Program};
 use crate::syntax::{Move, State};
 use crate::syntax::{StateType, Transition};
 
-const ALLOWED_NAME_SYMBOLS: &str = "abcdefghijklmnopqrstuvwxyz0123456789_>";
+const ALLOWED_NAME_SYMBOLS: &str = "abcdefghijklmnopqrstuvwxyz0123456789_.";
 const ALLOWED_TAPE_SYMBOLS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*[]-+=/?_:";
 
 /// Use string slices (`&str`) instead of `String` for more efficient parsing.
