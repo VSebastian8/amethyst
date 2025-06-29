@@ -1,0 +1,24 @@
+-- 0ABC -> 1ABC
+automaton not(){
+    initial state q0 {
+        0 / 1, R -> done;
+        1 / 0, R -> done;
+        _ / _, N -> error;
+    }
+    accept state done;
+    reject state error;
+}
+
+automaton not4 = repeat(4, not);
+automaton move_back4 = move(L, 4);
+{-
+automaton main(not4 n4, move_back4 m4) {
+     initial state q0 {
+         _ / _, N -> n4.input;
+     }
+     state n4.accept -> m4.input;
+     state m4.accept -> final;
+     accept state final;
+}
+-}
+automaton main = chain(not4, move_back4);

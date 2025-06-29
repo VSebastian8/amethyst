@@ -4,6 +4,7 @@ use crate::{
     syntax::{AutomatonType, MacroType, Move, Program, StateType},
     tape::Tape,
 };
+use colored::*;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
@@ -204,6 +205,7 @@ impl TuringMachine {
             ));
         }
         visited.insert(component.to_string());
+        self.add_state(&StateType::Reject("reject".to_owned()), "".to_owned());
         match automata.get(component) {
             None => Err(format!(
                 "Could not find component {} of type {}!",
@@ -358,7 +360,7 @@ impl TuringMachine {
         let mut turing_state =
             TuringState::new(self.initial_state.to_owned(), config.input.to_owned());
         if config.debug {
-            print!("State: {}", turing_state.current_state);
+            print!("{}\n{}", "State:".bright_blue(), turing_state.current_state);
         }
         let result = self.run(&mut turing_state, config);
         if config.debug {

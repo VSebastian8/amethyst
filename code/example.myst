@@ -12,8 +12,8 @@ automaton not(){
    
 -- Various macros
 automaton three = repeat(3, not);
-automaton ov3r = override(R, 12, Z);
-automaton p_lace = place("hello world");
+automaton ov3r = override(R, 12, 'Z');
+automaton p_lace = place("HELLO:WORLD!");
 
 {-
 This machine uses
@@ -24,8 +24,8 @@ automaton main (not n1, three n2) {
         @/@,N-> n1.q0; _/@,R->qrej;    
     }
     -- This is an empty state:
-    state random_state  {  }
-    state n1.q1 {_/_,N->n2.q0;} -- This is the state of a component
+    -- state random_state  {  }
+    state n1.q1 {_/_,N->n2.input;} -- This is the state of a component
     state n2.q1 {   
         _ / _ , N -> qacc;  
     }   

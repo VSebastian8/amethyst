@@ -96,18 +96,24 @@ impl Tape {
     pub fn show_tape(&self) {
         println!("{}", "Tape:".bright_blue());
         let header = self.left.len();
+        println!("{:?}", self.left);
+        println!("{:?}", self.right);
         println!(
             "..@{}|{}|@..",
             self.left
                 .iter()
                 .flat_map(|sym| ['|', *sym])
                 .collect::<String>(),
-            self.right
-                .iter()
-                .rev()
-                .flat_map(|sym| ['|', *sym])
-                .skip(1)
-                .collect::<String>()
+            if self.right.is_empty() {
+                "@".to_owned()
+            } else {
+                self.right
+                    .iter()
+                    .rev()
+                    .flat_map(|sym| ['|', *sym])
+                    .skip(1)
+                    .collect::<String>()
+            }
         );
         println!("{}^", " ".repeat(header * 2 + 4));
     }
