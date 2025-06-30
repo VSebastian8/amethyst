@@ -96,8 +96,6 @@ impl Tape {
     pub fn show_tape(&self) {
         println!("{}", "Tape:".bright_blue());
         let header = self.left.len();
-        println!("{:?}", self.left);
-        println!("{:?}", self.right);
         println!(
             "..@{}|{}|@..",
             self.left
