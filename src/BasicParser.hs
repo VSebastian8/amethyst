@@ -131,8 +131,8 @@ chainP = Chain
 
 repeatP :: Parser MacroKeyword
 repeatP = Repeat
-    <$> (stringP "repeat" *> ws *> charP '(' *> ws *> numberP <* ws)
-    <*> (charP ',' *> ws *> wordP <* ws <* charP ')')
+    <$> (stringP "repeat" *> ws *> charP '(' *> ws *> wordP <* ws)
+    <*> (charP ',' *> ws *>  numberP <* ws <* charP ')')
 
 moveMP :: Parser MacroKeyword
 moveMP = Move

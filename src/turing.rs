@@ -96,7 +96,7 @@ fn into_macro(
                 })
                 .collect::<Result<Vec<TuringMachine>, String>>()?,
         ),
-        MacroType::Repeat(num, component) => {
+        MacroType::Repeat(component, num) => {
             let mut tm = TuringMachine::default();
             tm.add_component(
                 name.to_string() + &component + ".",

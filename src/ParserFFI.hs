@@ -32,7 +32,7 @@ data MacroKeywordC
   | IntersectC !Int ![CString]
   | ReunionC !Int ![CString]
   | ChainC !Int ![CString]
-  | RepeatC !Int !CString
+  | RepeatC !CString !Int
   | MoveC !(Ptr Move) !Int
   | OverrideC !(Ptr Move) !Int !Char
   | PlaceC !CString
@@ -173,7 +173,7 @@ instance Storable MacroKeywordC where
       poke (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) )) automataArray
       forM_ (zip automataList [0..]) $ \(automata, i) -> do
               pokeElemOff (castPtr automataArray :: Ptr CString) i automata
-    RepeatC number automata -> do
+    RepeatC automata number -> do
       poke (castPtr ptr :: Ptr Int) 4
       poke (castPtr ptr `plusPtr` sizeOf(undefined :: Int)) number
       poke (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) )) automata
@@ -228,7 +228,7 @@ instance Storable MacroKeywordC where
       4 -> do
         number <- peek (castPtr ptr `plusPtr` sizeOf(undefined :: Int))
         automata <- peek (castPtr ptr `plusPtr` ( 2 * sizeOf(undefined :: Int) ))
-        return $ RepeatC number automata
+        return $ RepeatC automata number
       5 -> do
         move <- peek (castPtr ptr `plusPtr` sizeOf(undefined :: Int))
         number <- peek (castPtr ptr `plusPtr`
@@ -388,7 +388,7 @@ encryptMacro (Complement automata) = ComplementC (unsafePerformIO $ newCString a
 encryptMacro (Intersect automataList) = IntersectC (length automataList) (map (unsafePerformIO.newCString) automataList)
 encryptMacro (Reunion automataList) = ReunionC (length automataList) (map (unsafePerformIO.newCString) automataList)
 encryptMacro (Chain automataList) = ChainC (length automataList) (map (unsafePerformIO.newCString) automataList)
-encryptMacro (Repeat number automata) = RepeatC number (unsafePerformIO $ newCString automata)
+encryptMacro (Repeat automata number) = RepeatC (unsafePerformIO $ newCString automata) number
 encryptMacro (Move move number) = MoveC (unsafePerformIO $ new move) number
 encryptMacro (Override move number symbol) = OverrideC (unsafePerformIO $ new move) number symbol
 encryptMacro (Place text) = PlaceC (unsafePerformIO $ newCString  text)
@@ -535,7 +535,7 @@ macroString macroPtr = do
   macro <- peek macroPtr
   return $ case macro of
     ComplementC automata -> automata
-    RepeatC _ automata -> automata
+    RepeatC automata _ -> automata
     PlaceC text -> text
     _ -> undefined
 
@@ -543,7 +543,7 @@ foreign export ccall "macro_number" macroNumber :: Ptr MacroKeywordC -> IO Int
 macroNumber macroPtr = do
   macro <- peek macroPtr
   return $ case macro of
-    RepeatC n _ -> n
+    RepeatC _ n -> n
     MoveC _ n -> n
     OverrideC _ n _ -> n
     ShiftC _ n -> n
@@ -598,7 +598,7 @@ freeMacro macroPtr = do
       forM_ automataList free
       automataArray <- peek (castPtr macroPtr `plusPtr` (2 * sizeOf(undefined :: Int)))
       free automataArray
-    RepeatC _ automata -> free automata
+    RepeatC automata _ -> free automata
     MoveC move _ -> free move
     OverrideC move _ _ -> free move
     PlaceC text -> free text

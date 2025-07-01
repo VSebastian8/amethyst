@@ -319,7 +319,7 @@ mod tests {
             macro_res,
             AutomatonType::Macro(
                 "repetare".to_owned(),
-                MacroType::Repeat(5, "not".to_owned())
+                MacroType::Repeat("not".to_owned(), 5)
             )
         )
     }
@@ -723,7 +723,7 @@ mod tests {
                     ),
                     AutomatonType::Macro(
                         "three".to_owned(),
-                        MacroType::Repeat(3, "not".to_owned())
+                        MacroType::Repeat("not".to_owned(), 3)
                     ),
                     AutomatonType::Machine(
                         "main".to_owned(),
@@ -828,7 +828,7 @@ mod tests {
                     ),
                     AutomatonType::Macro(
                         "do3".to_owned(),
-                        MacroType::Repeat(3, "place_and_move".to_owned())
+                        MacroType::Repeat("place_and_move".to_owned(), 3)
                     ),
                     AutomatonType::Macro("go.back".to_owned(), MacroType::Move(Move::Left, 36)),
                     AutomatonType::Macro(

@@ -11,7 +11,7 @@ automaton not(){
 }   
    
 -- Various macros
-automaton three = repeat(3, not);
+automaton three = repeat(not, 3);
 automaton ov3r = override(R, 12, 'Z');
 automaton p_lace = place("HELLO:WORLD!");
 

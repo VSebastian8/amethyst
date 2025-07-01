@@ -287,25 +287,25 @@ mod advanced_tests {
         );
         // Repeat
         assert_eq!(
-            parse_automaton("automaton repetare = repeat(5, not);"),
+            parse_automaton("automaton repetare = repeat(not, 5);"),
             Ok(AutomatonType::Macro(
                 "repetare".to_string(),
-                MacroType::Repeat(5, "not".to_string())
+                MacroType::Repeat("not".to_string(), 5)
             ))
         );
         assert_eq!(
-            parse_automaton("automaton yo_gurt = repeat(007, hii);"),
+            parse_automaton("automaton yo_gurt = repeat(hii,7);"),
             Ok(AutomatonType::Macro(
                 "yo_gurt".to_string(),
-                MacroType::Repeat(7, "hii".to_string())
+                MacroType::Repeat("hii".to_string(), 7)
             ))
         );
         assert_eq!(
-            parse_automaton("automaton wrong_num = repeat(12ab,);"),
+            parse_automaton("automaton wrong_num = repeat(not, 12ab);"),
             Err("Expected number literal found 12ab".to_string())
         );
         assert_eq!(
-            parse_automaton("automaton bad = repeat(hello);"),
+            parse_automaton("automaton bad = repeat(7, hello);"),
             Err("Expected number literal found hello".to_string())
         );
         // Move
@@ -382,7 +382,7 @@ mod advanced_tests {
    }
    -- Here is a comment in the program
    {-And another-}--and  another immediately after
-   automaton three = repeat(3, not); -- this is a macro
+   automaton three = repeat(not, 3); -- this is a macro
    automaton main (not n1, three n2) {
        initial state q0 {
            B/B,N-> n1.q0; _/B,R->qrej;
@@ -433,7 +433,7 @@ mod advanced_tests {
                     ),
                     AutomatonType::Macro(
                         "three".to_owned(),
-                        MacroType::Repeat(3, "not".to_owned())
+                        MacroType::Repeat("not".to_owned(), 3)
                     ),
                     AutomatonType::Machine(
                         "main".to_owned(),
@@ -520,7 +520,7 @@ automaton a(){}
                 automaton output = place(\"HELLO-WORLD!\");
                 automaton mv = move(R, 12);
                 automaton place_and_move = chain(output, mv);
-                automaton do3 = repeat(3, place_and_move);
+                automaton do3 = repeat(place_and_move, 3);
                 automaton go.back = move(L, 36); --hi
                 {-and now for the main-event-}
                 automaton main = chain(do3, go.back);"
@@ -538,7 +538,7 @@ automaton a(){}
                     ),
                     AutomatonType::Macro(
                         "do3".to_owned(),
-                        MacroType::Repeat(3, "place_and_move".to_owned())
+                        MacroType::Repeat("place_and_move".to_owned(), 3)
                     ),
                     AutomatonType::Macro("go.back".to_owned(), MacroType::Move(Move::Left, 36)),
                     AutomatonType::Macro(

@@ -721,6 +721,7 @@ fn machine_pe<'a>() -> Parser<'a, AutomatonType> {
 // macro for parsing numbers
 fn number_pe<'a>() -> Parser<'a, u32> {
     literal_p()
+        .not_null_e("Expected number literal")
         .fmap(|s| s.to_string())
         .condition(|s| s.chars().all(|c| c >= '0' && c <= '9'))
         .raise_literal("", "Expected number literal found ", "")
@@ -791,16 +792,16 @@ fn chain_pe<'a>() -> Parser<'a, MacroType> {
 }
 
 fn repeat_pe<'a>() -> Parser<'a, MacroType> {
-    fmake(move |num| move |component: &'a str| MacroType::Repeat(num, component.to_string()))
+    fmake(move |component: &'a str| move |num: u32| MacroType::Repeat(component.to_string(), num))
         .ap(string_p("repeat")
             .right(ws1())
             .right(char_pe('('))
             .right(ws1())
-            .right(number_pe())
+            .right(word_pe().not_null_e("Expected component name"))
             .left(ws1()))
         .ap(char_pe(',')
             .right(ws1())
-            .right(word_pe().not_null_e("Expected component name"))
+            .right(number_pe())
             .left(ws1())
             .left(char_pe(')')))
 }

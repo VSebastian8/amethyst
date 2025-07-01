@@ -32,7 +32,7 @@ pub enum MacroType {
     Intersect(Box<Vec<String>>),
     Reunion(Box<Vec<String>>),
     Chain(Box<Vec<String>>),
-    Repeat(u32, String),
+    Repeat(String, u32),
     Move(Move, u32),
     Override(Move, u32, char),
     Place(String),

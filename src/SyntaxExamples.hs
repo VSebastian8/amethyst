@@ -34,14 +34,14 @@ macro1 = "automaton comp = complement(and);"
 macro2 = "automaton int = intersect(not, not, not);"
 macro3 = "automaton ren = reunion(and, or);"
 macro4 = "automaton lant = chain(not, or, move2l);" 
-macro5= "automaton repetare = repeat(5, not);"
+macro5= "automaton repetare = repeat(not, 5);"
 macro6 = "automaton move8r = move(R, 8);"
 macro7 = "automaton move2l = move(L, 2);"
 macro8 = "automaton rescriere = override(L, 5, 'V');"
 macro9 = "automaton scriere = place(\"ABCDE\");"
 macro10 = "automaton insert8 = shift(R, 8);"
 macro11= "automaton delete19 = shift(L, 19);"
-macro12 = "automaton bad = repeat(hello);" -- error expected number
+macro12 = "automaton bad = repeat(7, hello);" -- error expected number
 macro13 = "automaton bad = move(3, L);" -- error expected move
 macro14 = "automaton ch = chain();" -- error expected machine type
 {- Maybe macros:
@@ -113,7 +113,7 @@ program1 = " \
 \   \n\
 \   -- Here is a comment in the program\n\
 \   {-And another-}--and  another immediately after\n\
-\   automaton three = repeat(3, not); -- this is a macro\n\
+\   automaton three = repeat(not, 3); -- this is a macro\n\
 \   automaton main (not n1, three n2) {    \n\
 \       initial state q0 {      \n\
 \           B/B,N-> n1.q0; _/B,R->qrej;    \n\
@@ -135,7 +135,7 @@ program3 = "\
 \automaton output = place(\"HELLO-WORLD!\");\n\
 \automaton mv = move(R, 12);\n\
 \automaton place_and_move = chain(output, mv);\n\
-\automaton do3 = repeat(3, place_and_move);\n\
+\automaton do3 = repeat(place_and_move, 3);\n\
 \automaton go.back = move(L, 36);\n\
 \automaton main = chain(do3, go.back);\n\
 \"

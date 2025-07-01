@@ -17,7 +17,7 @@ data MacroKeyword
   | Intersect [String]
   | Reunion [String]
   | Chain [String]
-  | Repeat Int String
+  | Repeat String Int
   | Move Move Int
   | Override Move Int Char
   | Place String

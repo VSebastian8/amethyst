@@ -111,10 +111,10 @@ mod basic_tests {
             ))
         );
         assert_eq!(
-            parse_automaton("automaton repetare = repeat(5, not);"),
+            parse_automaton("automaton repetare = repeat(not, 5);"),
             Some(AutomatonType::Macro(
                 "repetare".to_string(),
-                MacroType::Repeat(5, "not".to_string())
+                MacroType::Repeat("not".to_string(), 5)
             ))
         );
         assert_eq!(

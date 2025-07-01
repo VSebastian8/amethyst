@@ -12,7 +12,14 @@
 
 ## Backlog
 
+- Reworked component parser
 - Standard library
+
+## v1.3.0 - 2025-07-02
+
+- Changed order of arguments for `repeat macro`
+- Fixed default reject state bug
+- Fixed various display bugs
 
 ## v1.2.1 - 2025-05-21
 

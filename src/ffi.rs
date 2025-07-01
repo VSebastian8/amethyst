@@ -189,7 +189,7 @@ pub fn parse_macro(macro_ptr: *mut i32) -> MacroType {
                     .to_str()
                     .expect("Error converting CString to String")
                     .to_owned();
-                MacroType::Repeat(number as u32, automaton)
+                MacroType::Repeat(automaton, number as u32)
             }
             5 => {
                 let number = macro_number(macro_ptr);

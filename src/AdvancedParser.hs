@@ -274,8 +274,9 @@ chainPE = Chain
 
 repeatPE :: Parser MacroKeyword
 repeatPE = Repeat
-    <$> (stringP "repeat" *> ws *> charPE '(' *> ws *> numberPE <* ws)
-    <*> (charPE ',' *> ws *> (notNullE "expected machine type" wordPE) <* ws <* charPE ')')
+    <$> (stringP "repeat" *> ws *> charPE '(' *> ws 
+    *> (charPE ',' *> ws *> (notNullE "expected machine type" wordPE) <* ws))
+    <*> numberPE <* ws <* charPE ')'
 
 moveMPE :: Parser MacroKeyword
 moveMPE = Move

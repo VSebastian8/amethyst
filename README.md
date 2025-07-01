@@ -75,8 +75,8 @@ The following macros are present so far:
     - nth automaton's accept state -> (n+1)th automaton's initial state
     - last automaton's accept state -> macro accept state
     - all automata reject states -> macro reject state
-- `repeat` (7, automaton)
-  - equivalent with a chain of 7 automata of the same type
+- `repeat` (automaton, number)
+  - equivalent with a chain of n automata of the same type
 - `move` (moveSymbol, number)
   - moves the head left or right a number of positions
 - `override` (moveSymbol, number, tapeSymbol)

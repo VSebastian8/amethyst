@@ -423,20 +423,20 @@ fn chain_p<'a>() -> Parser<'a, MacroType> {
 
 fn repeat_p<'a>() -> Parser<'a, MacroType> {
     fmap(
-        |(n, name)| MacroType::Repeat(n as u32, name),
+        |(name, n)| MacroType::Repeat(name, n as u32),
         ap(
             fmap(
-                |n| move |name| (n, name),
+                |name| move |n| (name.clone(), n),
                 string_p("repeat")
                     .and_then(ws())
                     .and_then(char_p('('))
                     .and_then(ws())
-                    .and_then(number_p())
+                    .and_then(not_nulls(word_p()))
                     .and_keep(ws()),
             ),
             char_p(',')
                 .and_then(ws())
-                .and_then(not_nulls(word_p()))
+                .and_then(number_p())
                 .and_keep(ws())
                 .and_keep(char_p(')')),
         ),

@@ -56,7 +56,7 @@ automaton a2() {
 automaton re = reunion(a1, a2, a1);
 automaton int = intersect(a1, a2);
 automaton ch = chain(a1, a1, a2);
-automaton rep = repeat(3, a1);
+automaton rep = repeat(a1, 3);
 automaton main(re reun){
     initial state q_ini {
         _ / _, N -> reun.input;
