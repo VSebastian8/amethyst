@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod advanced_tests {
-    use amethyst::advanced_parser::{
+    use amethyst::parser::{
         parse_automaton, parse_move, parse_program, parse_state, parse_transition, Leftover,
     };
     use amethyst::syntax::*;

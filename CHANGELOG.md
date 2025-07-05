@@ -1,19 +1,23 @@
 ## Future Ideas
 
 - Presentation website (tour and integrated runtime)
-- Macros implementation as real automata
+- Macros implementation as real automata?
 - Testing framework
 - More macros (find, compare, copy, random?)
 - Support for nondeterminism
 - Way to customize tape alphabet
 - Language server with standard code formatter
-- Import functionality
-- Visualizations and animations
+- Visualizations
 
-## Backlog
+## v2.0.0 - Planned
 
-- Reworked component parser
+- Added macros
+- Tape animation
 - Standard library
+- Import syntax
+- Added warnings
+- More logic errors detection
+- Reworked component parser
 
 ## v1.3.0 - 2025-07-02
 

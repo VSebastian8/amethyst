@@ -1,5 +1,5 @@
-use amethyst::advanced_parser::parse_program;
 use amethyst::config::parse_config;
+use amethyst::parser::parse_program;
 use amethyst::turing::TuringMachine;
 use colored::*;
 use std::collections::HashSet;
