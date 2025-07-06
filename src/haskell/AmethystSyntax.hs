@@ -1,40 +1,56 @@
 module AmethystSyntax where
 
--- Basic types
+data Info 
+  = Info {getLine :: Int, getCol :: Int}
+  deriving (Show)
+
 data Move = L | R | N
   deriving (Show)
-data Transition = Transition {getReadSymbol :: Char, getWriteSymbol :: Char, getMove :: Move, getNewState :: String}
-  deriving (Show)
-data State
-  = Accept {getStateName :: String}
-  | Reject {getStateName :: String}
-  | State {getStateName :: String, getTransitions :: [Transition], getInitial :: Bool}
+
+data Transition 
+  = Transition {getReadSymbol :: Char, getWriteSymbol :: Char, getMoveSymbol :: Move, getNewState :: String, getTransitionInfo :: Info}
   deriving (Show)
 
--- Macro Types
-data MacroKeyword
-  = Complement String
-  | Intersect [String]
-  | Reunion [String]
-  | Chain [String]
-  | Repeat String Int
-  | Move Move Int
-  | Override Move Int Char
-  | Place String
-  | Shift Move Int
+data StateType 
+  = Accept
+  | Reject
+  | Normal {getInitial :: Bool, getTransitions :: [Transition]}
   deriving (Show)
 
--- Turing Machines
+data State 
+  = State {getComponentName :: Maybe String, getStateName :: String, getType :: StateType, getStateInfo :: Info}
+  deriving (Show)
+
+data Component
+  = Component {getPackageName :: Maybe String, getModuleName :: Maybe String, getAutomatonName :: String, getComponentInfo :: Info}
+  deriving (Show)
+
+data Machine
+  = Machine {getComponents :: [(Component, String)], getStates :: [State]}
+  deriving (Show)
+
+data Macro
+  = Complement {getAutomaton :: Component}
+  | Intersect {getAutomata :: [Component]}
+  | Reunion {getAutomata :: [Component]}
+  | Chain {getAutomata :: [Component]}
+  | Repeat {getAutomaton :: Component, getNumber :: Int}
+  | Move {getMove :: Move, getNumber :: Int}
+  | Override {getMove :: Move, getNumber :: Int, getSymbol :: Char}
+  | Place {getSequence :: String}
+  | Shift {getMove :: Move, getNumber :: Int}
+  deriving (Show)
+
 data Automaton
-  = Machine {getAutomatonName :: String, getComponents :: [(String, String)], getStates :: [State]}
-  | Macro {getAutomatonName :: String, getKeyword :: MacroKeyword}
-  deriving (Show)
-newtype Program = Program {getAutomata :: [Automaton]}
-  deriving (Show)
+  = Macro {getName :: String, getMacro :: Macro, getInfo :: Info}
+  | Mach  {getName :: String, getMachine :: Machine, getInfo :: Info}
+  deriving(Show)
 
--- Alphabet configuration
-allowedNameSymbols :: [Char]
-allowedNameSymbols = ['a' .. 'z'] ++ "0123456789_."
+newtype Program 
+  = Program {getAutomataList :: [Automaton]}
+  deriving(Show)
 
-allowedTapeSymbols :: [Char]
-allowedTapeSymbols = ['A' .. 'Z'] ++ "0123456789" ++ "!@#$%^&*[]-+=/?_:"
+breakSymbols, nameSymbols, tapeSymbols :: [Char]
+nameSymbols = ['0' .. '9'] ++ ['a' .. 'z'] ++ "_"
+tapeSymbols = ['0' .. '9'] ++ ['A' .. 'Z'] ++ "_@!#$%^&*[]-+=?:"
+breakSymbols = "(){};=, \n\t\"\'"

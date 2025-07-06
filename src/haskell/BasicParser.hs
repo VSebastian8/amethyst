@@ -1,7 +1,7 @@
 module BasicParser where
 
 import Control.Applicative
-import AmethystSyntax
+import OriginalSyntax
 
 newtype Parser a = Parser {runParser :: String -> Maybe (String, a)}
 

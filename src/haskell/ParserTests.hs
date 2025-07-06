@@ -1,6 +1,6 @@
 module ParserTests where
 
-import AmethystSyntax
+import OriginalSyntax
 import AdvancedParser
 import SyntaxExamples
 

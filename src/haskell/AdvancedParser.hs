@@ -5,7 +5,7 @@
 module AdvancedParser where
 
 import Control.Applicative
-import AmethystSyntax
+import OriginalSyntax
 
 newtype Error = Error {getErr :: String}
 data Leftover = Leftover {getRest :: String, getLine :: Int, getColumn :: Int}
