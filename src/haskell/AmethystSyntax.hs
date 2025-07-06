@@ -1,7 +1,7 @@
 module AmethystSyntax where
 
 data Info 
-  = Info {getLine :: Int, getCol :: Int}
+  = Info {getLin :: Int, getCol :: Int}
   deriving (Show)
 
 data Move = L | R | N
