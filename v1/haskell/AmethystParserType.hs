@@ -2,7 +2,6 @@
 module AmethystParserType where
 import AmethystSyntax
 import Control.Applicative
-import Text.XHtml (input)
 
 newtype Parser a = Parser {run :: (String, Info) -> Maybe ((String, Info), Either String a)}
 
@@ -61,15 +60,24 @@ instance Monad Parser where
                 Left err -> Just (input', Left err)
                 Right x -> run (f x) input'
 
+(<->) :: Parser a -> String -> Parser a 
+p <-> s 
+    = Parser $
+    \input -> do
+        (input', res) <- run p input
+        case res of
+            Left err -> Just (input, Left $ err ++ s)
+            Right x -> Just (input', Right x)
+
+infixl 4 <->
+     
 (<+>) :: Parser a -> (String -> String) -> Parser a
 p <+> f
     = Parser $
     \input -> do
         (input', res) <- run p input
-        Just (
-            input',
-            case res of
-                Left err -> Left $ err ++ f (fst input)
-                Right x -> Right x
-            )
-infixl 0 <+>
+        case res of
+            Left err -> Just (input, Left $ err ++ f (fst input))
+            Right x -> Just (input', Right x)
+        
+infixl 4 <+>

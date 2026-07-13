@@ -1,0 +1,12 @@
+automaton main(){
+    initial state q0 {
+        0 / 0, R -> q0;
+        1 / 1, R -> q0;
+        @ / @, R -> q1;
+        2 / 3, N -> q2;
+    }
+    state q1 {
+        0 / 1, L -> q2;
+    }
+    accept state q2;
+}

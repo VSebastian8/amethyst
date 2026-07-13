@@ -9,9 +9,9 @@ homepage = "https://github.com/VSebastian8/amethyst"
 repository = "https://github.com/VSebastian8/amethyst"
 keywords = ["cli", "programming", "language", "turing", "automata"]
 exclude = ["/extensions", "/code", "/tests", "/config"]
-[[bin]]
-name = "geode"
-path = "src/bin/geode.rs"
+# [[bin]]
+# name = "geode"
+# path = "src/bin/geode.rs"
 [lib]
 name = "amethyst"
 path = "src/lib.rs"

@@ -4,14 +4,15 @@
 - Macros implementation as real automata?
 - Testing framework
 - More macros (find, compare, copy, random?)
-- Support for nondeterminism
+- Support for nondeterminism (quantum-like simulation?)
 - Way to customize tape alphabet
 - Language server with standard code formatter
 - Visualizations
+- Custom macros
 
 ## v2.0.0 - Planned
 
-- Added macros
+- Patterns
 - Tape animation
 - Standard library
 - Import syntax
