@@ -6,6 +6,7 @@ pub enum Token {
     Initial,
     Accept,
     Reject,
+    As,
     // punctuation
     LParanthesis,
     RParanthesis,

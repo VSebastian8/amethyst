@@ -118,6 +118,7 @@ impl Lexer {
             "initial" => Token::Initial,
             "accept" => Token::Accept,
             "reject" => Token::Reject,
+            "as" => Token::As,
             _ => Token::Ident(word),
         })
     }
