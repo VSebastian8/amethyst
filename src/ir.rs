@@ -195,12 +195,17 @@ impl IR {
     fn add_automaton(
         &mut self,
         automata: &HashMap<String, &Automaton>,
+        visited: &mut HashSet<String>,
         prefix: &String,
         name: &String,
     ) -> Result<(String, Vec<(String, bool)>), String> {
         if !automata.contains_key(name) {
             return Err("Automaton does not exist".to_string());
         }
+        if visited.contains(name) {
+            return Err("Component cycles are not allowed".to_string());
+        }
+        visited.insert(name.clone());
         // Recursively add components
         let mut comps_input: HashMap<String, String> = HashMap::new();
         let mut comps_output: HashMap<String, Vec<(String, bool)>> = HashMap::new();
@@ -209,7 +214,7 @@ impl IR {
             .iter()
             .map(|(auto, comp)| {
                 let (comp_input, mut comp_outputs) =
-                    self.add_automaton(automata, &format!("{}.{}", prefix, comp), auto)?;
+                    self.add_automaton(automata, visited, &format!("{}.{}", prefix, comp), auto)?;
                 comps_input.insert(comp.clone(), comp_input);
                 comps_output
                     .entry(comp.clone())
@@ -218,6 +223,7 @@ impl IR {
                 Ok(())
             })
             .collect::<Result<(), String>>()?;
+        visited.remove(name);
         // Add shallow states, then full states
         automata[name]
             .states
@@ -274,7 +280,8 @@ impl IR {
     }
 }
 
-pub fn remove_components(program: &Vec<Automaton>) -> Result<Vec<IR>, String> {
+pub fn remove_components(program: &Vec<Automaton>) -> Result<HashMap<String, IR>, String> {
+    let mut visited = HashSet::new();
     let automata: HashMap<_, _> = program
         .iter()
         .map(|auto| (auto.name.clone(), auto))
@@ -283,9 +290,9 @@ pub fn remove_components(program: &Vec<Automaton>) -> Result<Vec<IR>, String> {
         .iter()
         .map(|auto| {
             let mut ir = IR::new();
-            let (initial, _) = ir.add_automaton(&automata, &auto.name, &auto.name)?;
+            let (initial, _) = ir.add_automaton(&automata, &mut visited, &auto.name, &auto.name)?;
             ir.initial_state = format!("{}.{}", auto.name, initial);
-            Ok(ir)
+            Ok((auto.name.clone(), ir))
         })
         .collect()
 }
@@ -325,15 +332,19 @@ mod tests {
         }];
         let result = remove_components(&program).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].initial_state, "main.first".to_string());
-        assert!(result[0]
+        assert_eq!(result["main"].initial_state, "main.first".to_string());
+        assert!(result["main"]
             .transition_states
             .contains(&"main.first".to_string()));
-        assert!(result[0].accept_states.contains(&"main.good".to_string()));
-        assert!(result[0].reject_states.contains(&"main.bad".to_string()));
-        assert!(result[0].transitions.contains_key("main.first"));
+        assert!(result["main"]
+            .accept_states
+            .contains(&"main.good".to_string()));
+        assert!(result["main"]
+            .reject_states
+            .contains(&"main.bad".to_string()));
+        assert!(result["main"].transitions.contains_key("main.first"));
         assert_eq!(
-            result[0].transitions["main.first"],
+            result["main"].transitions["main.first"],
             HashMap::from([
                 ('0', ('A', Move::L, "main.good".to_string())),
                 ('1', ('B', Move::R, "main.bad".to_string()))
@@ -474,7 +485,7 @@ mod tests {
         ];
         let result = remove_components(&program).unwrap();
         assert_eq!(result.len(), 3);
-        let main_ir = &result[2];
+        let main_ir = &result["main"];
         assert_eq!(main_ir.initial_state, "main.first".to_string());
         assert_eq!(
             main_ir.accept_states,

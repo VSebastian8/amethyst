@@ -16,8 +16,8 @@ impl Lexer {
     /// Tokenize the entire input
     pub fn tokenize(&mut self) -> Result<Vec<Token>, String> {
         let mut tokens = Vec::new();
-
         while let Some(&ch) = self.chars.peek() {
+            let mut skip = true;
             if ch.is_whitespace() {
                 self.chars.next();
                 continue;
@@ -25,7 +25,7 @@ impl Lexer {
             let token = match ch {
                 '(' => Ok(Token::LParanthesis),
                 ')' => Ok(Token::RParanthesis),
-                '}' => Ok(Token::RParanthesis),
+                '}' => Ok(Token::RBracket),
                 '/' => Ok(Token::Slash),
                 ',' => Ok(Token::Comma),
                 ';' => Ok(Token::Semicolon),
@@ -41,7 +41,10 @@ impl Lexer {
                                 self.read_block_comment()?;
                                 continue;
                             }
-                            _ => Ok(Token::LBracket),
+                            _ => {
+                                skip = false;
+                                Ok(Token::LBracket)
+                            }
                         }
                     } else {
                         Err("Unrecognized - at EOF".to_string())
@@ -64,11 +67,14 @@ impl Lexer {
                         Err("Unrecognized - at EOF".to_string())
                     }
                 }
-                'a'..='z' => self.read_word(),
+                'a'..='z' => {
+                    skip = false;
+                    self.read_word()
+                }
                 'A'..='Z' | '0'..='9' | '_' | '@' | '&' => Ok(Token::Symbol(ch)),
                 _ => Err(format!("Unexpected character: '{}'", ch)),
             }?;
-            if token != Token::LBracket {
+            if skip {
                 self.chars.next();
             }
             tokens.push(token);
@@ -138,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_whitespace_handling() {
-        let mut lexer = Lexer::new("  automaton   {  accept state acceptstate }   ");
+        let mut lexer = Lexer::new("  automaton{  accept state acceptstate }   ");
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(
             tokens,
@@ -148,7 +154,7 @@ mod tests {
                 Accept,
                 State,
                 Ident("acceptstate".to_string()),
-                RParanthesis
+                RBracket
             ]
         );
     }
@@ -175,7 +181,7 @@ mod tests {
                 Dot,
                 Comma,
                 Semicolon,
-                RParanthesis
+                RBracket
             ]
         );
     }
@@ -219,8 +225,9 @@ mod tests {
                 Symbol('L'),
                 Arrow,
                 Ident("second_state2".to_string()),
-                RParanthesis,
-                RParanthesis
+                Semicolon,
+                RBracket,
+                RBracket
             ]
         );
     }

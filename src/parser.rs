@@ -42,7 +42,8 @@ impl Parser {
     fn parse_symbol(&mut self) -> Result<char, String> {
         match self.advance() {
             Some(Token::Symbol(ch)) => Ok(*ch),
-            _ => Err("Expected symbol".to_string()),
+            Some(other) => Err(format!("Expected symbol, found {:?}", other)),
+            None => Err(format!("Expected symbol, found EOF")),
         }
     }
 
@@ -51,14 +52,15 @@ impl Parser {
             'L' => Ok(Move::L),
             'R' => Ok(Move::R),
             'N' => Ok(Move::N),
-            _ => Err("Expected move symbol".to_string()),
+            x => Err(format!("Expected move symbol, found {}", x)),
         }
     }
 
     fn parse_ident(&mut self) -> Result<String, String> {
         match self.advance() {
             Some(Token::Ident(name)) => Ok(name.clone()),
-            _ => Err("Expected identifier".to_string()),
+            Some(other) => Err(format!("Expected identifier, found {:?}", other)),
+            None => Err(format!("Expected identifier, found EOF")),
         }
     }
 
@@ -197,7 +199,14 @@ impl Parser {
         })
     }
 
-    pub fn parse(&mut self) {}
+    pub fn parse(&mut self) -> Result<Vec<Automaton>, String> {
+        let mut automata = vec![];
+        while self.pos < self.tokens.len() {
+            let automaton = self.parse_automaton()?;
+            automata.push(automaton);
+        }
+        Ok(automata)
+    }
 }
 
 #[cfg(test)]

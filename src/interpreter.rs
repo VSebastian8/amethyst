@@ -1,0 +1,131 @@
+use std::collections::HashMap;
+
+use crate::ast::Move;
+use crate::ir::remove_components;
+use crate::lexer::Lexer;
+use crate::parser::Parser;
+use std::fs;
+
+pub struct Interpreter {
+    initial_states: HashMap<String, String>,
+    final_states: HashMap<String, bool>,
+    transitions: HashMap<String, HashMap<char, (char, Move, String)>>,
+    pub state: String,
+    left: Vec<char>,
+    right: Vec<char>,
+}
+
+impl Interpreter {
+    pub fn new() -> Self {
+        Interpreter {
+            initial_states: HashMap::new(),
+            final_states: HashMap::new(),
+            transitions: HashMap::new(),
+            state: "".to_string(),
+            left: vec![],
+            right: vec![],
+        }
+    }
+
+    pub fn load_code(&mut self, code: &str) -> Result<(), String> {
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.tokenize()?;
+        // println!("Tokens: {:?}", tokens);
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse()?;
+        // println!("Program: {:?}", program);
+
+        let automata = remove_components(&program)?;
+        for (automaton, repr) in automata {
+            self.initial_states.insert(automaton, repr.initial_state);
+            for acc in repr.accept_states {
+                self.final_states.insert(acc, true);
+            }
+            for acc in repr.reject_states {
+                self.final_states.insert(acc, false);
+            }
+            self.transitions.extend(repr.transitions);
+        }
+        Ok(())
+    }
+
+    pub fn load(&mut self, filename: &str) -> Result<(), String> {
+        let code = fs::read_to_string(filename).map_err(|e| e.to_string())?;
+        self.load_code(code.as_str())?;
+        Ok(())
+    }
+
+    pub fn step(&mut self) {
+        let trans = &self.transitions[&self.state];
+        let sym = self.right.pop().unwrap_or('@');
+        // println!("State {} Sym {}", self.state, sym);
+        if let Some((write, mov, state)) = trans.get(&sym).or(trans.get(&'_')) {
+            let new_sym = if *write == '_' { sym } else { *write };
+            match mov {
+                Move::R => self.left.push(new_sym),
+                Move::N => self.right.push(new_sym),
+                Move::L => {
+                    self.right.push(new_sym);
+                    let left_sym = self.left.pop().unwrap_or('@');
+                    self.right.push(left_sym);
+                }
+            }
+            self.state = state.clone();
+        } else {
+            // Will be impossible if we insert default case _ => sink
+            panic!("No transition for symbol {} and state {}", sym, self.state);
+        }
+    }
+
+    pub fn set_start(&mut self, automaton: &str) -> Result<(), String> {
+        if !self.initial_states.contains_key(automaton) {
+            return Err(format!("Unknown automaton {}", automaton));
+        }
+        self.state = self.initial_states[automaton].clone();
+        Ok(())
+    }
+
+    pub fn set_input(&mut self, input: &str) {
+        self.left.clear();
+        self.right = input.chars().rev().collect();
+    }
+
+    pub fn run(&mut self, automaton: &str, input: &str) -> Result<(), String> {
+        self.set_start(automaton)?;
+        self.set_input(input);
+        println!("Running automaton {} on {}", automaton, self.tape());
+        loop {
+            self.step();
+            if self.final_states.contains_key(&self.state) {
+                println!(
+                    "{}: reached final state {}",
+                    if self.final_states[&self.state] {
+                        "Accept"
+                    } else {
+                        "Reject"
+                    },
+                    self.state
+                );
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn tape(&self) -> String {
+        format!(
+            "..@{}|{}|@..",
+            self.left
+                .iter()
+                .flat_map(|sym| ['|', *sym])
+                .collect::<String>(),
+            self.right
+                .iter()
+                .rev()
+                .flat_map(|sym| ['|', *sym])
+                .skip(1)
+                .collect::<String>()
+        )
+    }
+}
