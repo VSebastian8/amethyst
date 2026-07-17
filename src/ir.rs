@@ -53,10 +53,16 @@ impl IR {
         {
             return Err(format!("Unknown state {}", state));
         }
-        self.transitions
-            .entry(format!("{}.{}", prefix, from_state))
-            .or_insert(HashMap::new())
-            .insert(t.read, (t.write, t.mov.clone(), state));
+        let from = format!("{}.{}", prefix, from_state);
+        let state_trans = self.transitions.entry(from).or_insert(HashMap::new());
+        if state_trans.contains_key(&t.read) {
+            println!(
+                "WARNING: Unreachable transition, read symbol {} already covered",
+                t.read
+            );
+        } else {
+            state_trans.insert(t.read, (t.write, t.mov.clone(), state));
+        }
         Ok(())
     }
 
@@ -280,7 +286,32 @@ impl IR {
     }
 }
 
-pub fn remove_components(program: &Vec<Automaton>) -> Result<HashMap<String, IR>, String> {
+// Add automatic sink state for full coverage
+fn add_sink_states(program: &mut Vec<Automaton>) {
+    program.iter_mut().for_each(|automaton| {
+        let mut sink = false;
+        automaton.states.iter_mut().for_each(|state| match state {
+            State::State(_, _, _, transitions) => {
+                if !transitions.iter().any(|t| t.read == '_') {
+                    transitions.push(Transition {
+                        read: '_',
+                        write: '_',
+                        mov: Move::N,
+                        state: ("sink".to_string(), None),
+                    });
+                    sink = true;
+                }
+            }
+            _ => {}
+        });
+        if sink {
+            automaton.states.push(State::Reject("sink".to_string()));
+        }
+    });
+}
+
+pub fn remove_components(mut program: Vec<Automaton>) -> Result<HashMap<String, IR>, String> {
+    add_sink_states(&mut program);
     let mut visited = HashSet::new();
     let automata: HashMap<_, _> = program
         .iter()
@@ -319,7 +350,7 @@ mod tests {
                             state: ("good".to_string(), None),
                         },
                         Transition {
-                            read: '1',
+                            read: '_',
                             write: 'B',
                             mov: Move::R,
                             state: ("bad".to_string(), None),
@@ -330,7 +361,7 @@ mod tests {
                 State::Reject("bad".to_string()),
             ],
         }];
-        let result = remove_components(&program).unwrap();
+        let result = remove_components(program).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result["main"].initial_state, "main.first".to_string());
         assert!(result["main"]
@@ -347,7 +378,7 @@ mod tests {
             result["main"].transitions["main.first"],
             HashMap::from([
                 ('0', ('A', Move::L, "main.good".to_string())),
-                ('1', ('B', Move::R, "main.bad".to_string()))
+                ('_', ('B', Move::R, "main.bad".to_string()))
             ])
         );
     }
@@ -483,7 +514,7 @@ mod tests {
                 ],
             },
         ];
-        let result = remove_components(&program).unwrap();
+        let result = remove_components(program).unwrap();
         assert_eq!(result.len(), 3);
         let main_ir = &result["main"];
         assert_eq!(main_ir.initial_state, "main.first".to_string());
@@ -502,11 +533,13 @@ mod tests {
                 "main.a1.first".to_string(),
                 "main.a1.done".to_string(),
                 "main.a1.ups".to_string(),
+                "main.a1.sink".to_string(),
                 "main.a1.m.q0".to_string(),
                 "main.a1.m.q1".to_string(),
                 "main.a2.first".to_string(),
                 "main.a2.done".to_string(),
                 "main.a2.ups".to_string(),
+                "main.a2.sink".to_string(),
                 "main.a2.m.q0".to_string(),
                 "main.a2.m.q1".to_string()
             ])
@@ -529,7 +562,8 @@ mod tests {
                     "main.a1.first".to_string(),
                     HashMap::from([
                         ('1', ('0', Move::N, "main.a1.m.q0".to_string())),
-                        ('0', ('1', Move::N, "main.a1.m.q0".to_string()))
+                        ('0', ('1', Move::N, "main.a1.m.q0".to_string())),
+                        ('_', ('_', Move::N, "main.a1.sink".to_string()))
                     ])
                 ),
                 (
@@ -547,7 +581,8 @@ mod tests {
                     "main.a2.first".to_string(),
                     HashMap::from([
                         ('1', ('0', Move::N, "main.a2.m.q0".to_string())),
-                        ('0', ('1', Move::N, "main.a2.m.q0".to_string()))
+                        ('0', ('1', Move::N, "main.a2.m.q0".to_string())),
+                        ('_', ('_', Move::N, "main.a2.sink".to_string()))
                     ])
                 ),
                 (
@@ -566,11 +601,19 @@ mod tests {
                     HashMap::from([('_', ('_', Move::N, "main.finally".to_string())),])
                 ),
                 (
+                    "main.a1.sink".to_string(),
+                    HashMap::from([('_', ('_', Move::N, "main.finally".to_string())),])
+                ),
+                (
                     "main.a2.done".to_string(),
                     HashMap::from([('_', ('_', Move::N, "main.finally".to_string())),])
                 ),
                 (
                     "main.a2.ups".to_string(),
+                    HashMap::from([('_', ('_', Move::N, "main.double_ups".to_string())),])
+                ),
+                (
+                    "main.a2.sink".to_string(),
                     HashMap::from([('_', ('_', Move::N, "main.double_ups".to_string())),])
                 )
             ])

@@ -36,7 +36,7 @@ impl Interpreter {
         let program = parser.parse()?;
         // println!("Program: {:?}", program);
 
-        let automata = remove_components(&program)?;
+        let automata = remove_components(program)?;
         for (automaton, repr) in automata {
             self.initial_states.insert(automaton, repr.initial_state);
             for acc in repr.accept_states {
