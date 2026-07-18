@@ -86,14 +86,24 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn set_input(&mut self, input: &str) {
+    pub fn set_input(&mut self, input: &str) -> Result<(), String> {
+        if let Some(x) = input
+            .chars()
+            .find(|x| !"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789&@".contains(*x))
+        {
+            return Err(format!(
+                "Invalid symbol {}, use characters A-Z, 0-9, &, or @",
+                x
+            ));
+        }
         self.left.clear();
         self.right = input.chars().rev().collect();
+        Ok(())
     }
 
     pub fn run(&mut self, automaton: &str, input: &str) -> Result<(), String> {
         self.set_start(automaton)?;
-        self.set_input(input);
+        self.set_input(input)?;
         println!("Running automaton {} on {}", automaton, self.tape());
         loop {
             self.step();
@@ -127,5 +137,11 @@ impl Interpreter {
                 .skip(1)
                 .collect::<String>()
         )
+    }
+
+    pub fn list(&self) {
+        self.initial_states
+            .keys()
+            .for_each(|automaton| println!("- {}", automaton));
     }
 }

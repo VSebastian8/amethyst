@@ -19,6 +19,7 @@ path = "src/lib.rs"
 serial_test = "0.5"
 ctor = "0.1"
 [dependencies]
+clap = "4.6.2"
 colored = "3.0.0"
 [profile.release]
 opt-level = 1
