@@ -1,4 +1,7 @@
-use crate::{info::Info, token::*};
+use crate::{
+    info::{Error, Info},
+    token::*,
+};
 
 pub struct Lexer {
     chars: std::iter::Peekable<std::vec::IntoIter<char>>,
@@ -30,7 +33,7 @@ impl Lexer {
     }
 
     /// Tokenize the entire input
-    pub fn tokenize(&mut self) -> Result<Vec<TokenInfo>, String> {
+    pub fn tokenize(&mut self) -> Result<Vec<TokenInfo>, Error> {
         let mut tokens = Vec::new();
         while let Some(&ch) = self.chars.peek() {
             if ch.is_whitespace() {
@@ -65,7 +68,15 @@ impl Lexer {
                             }
                         }
                     } else {
-                        Err("Unrecognized - at EOF".to_string())
+                        Err(Error::NotTerminated(
+                            "`{`".to_string(),
+                            "`}`".to_string(),
+                            Info {
+                                line,
+                                from,
+                                to: self.column,
+                            },
+                        ))
                     }
                 }
                 '-' => {
@@ -79,10 +90,27 @@ impl Lexer {
                                 self.read_line_comment();
                                 continue;
                             }
-                            _ => Err("Unrecognized - ".to_string()),
+                            _ => {
+                                self.advance();
+                                Err(Error::Unknown(
+                                    '-',
+                                    Info {
+                                        line,
+                                        from,
+                                        to: self.column,
+                                    },
+                                ))
+                            }
                         }
                     } else {
-                        Err("Unrecognized - at EOF".to_string())
+                        Err(Error::Unknown(
+                            '-',
+                            Info {
+                                line,
+                                from,
+                                to: self.column,
+                            },
+                        ))
                     }
                 }
                 'a'..='z' => {
@@ -90,7 +118,17 @@ impl Lexer {
                     self.read_word()
                 }
                 'A'..='Z' | '0'..='9' | '_' | '@' | '&' => Ok(Token::Symbol(ch)),
-                _ => Err(format!("Unexpected character: '{}'", ch)),
+                _ => {
+                    self.advance();
+                    Err(Error::Unknown(
+                        ch,
+                        Info {
+                            line,
+                            from,
+                            to: self.column,
+                        },
+                    ))
+                }
             }?;
             if skip {
                 self.advance();
@@ -116,7 +154,9 @@ impl Lexer {
         }
     }
 
-    fn read_block_comment(&mut self) -> Result<(), String> {
+    fn read_block_comment(&mut self) -> Result<(), Error> {
+        let line = self.line;
+        let from = self.column;
         while let Some(c) = self.advance() {
             if c == '-' {
                 if let Some(c2) = self.advance() {
@@ -126,21 +166,39 @@ impl Lexer {
                 }
             }
         }
-        Err("Unterminated block comment".to_string())
+        Err(Error::NotTerminated(
+            "block comment".to_string(),
+            "`-}`".to_string(),
+            Info {
+                line,
+                from,
+                to: from + 2,
+            },
+        ))
     }
 
-    fn read_word(&mut self) -> Result<Token, String> {
+    fn read_word(&mut self) -> Result<Token, Error> {
+        let from = self.column;
         let mut word = String::new();
         while let Some(&c) = self.chars.peek() {
-            if c.is_ascii_uppercase() {
-                return Err(format!("Uppercase symbol {} not allowed in identifier", c));
-            }
-            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' {
+            if c.is_whitespace() || "(){};,:/-.^@&".contains(c) {
+                break;
+            } else {
                 word.push(c);
                 self.advance();
-            } else {
-                break;
             }
+        }
+        if let Some(_) =
+            word.find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
+        {
+            return Err(Error::MalformedIdentifier(
+                word,
+                Info {
+                    line: self.line,
+                    from: from,
+                    to: self.column,
+                },
+            ));
         }
 
         Ok(match word.as_str() {
@@ -371,11 +429,17 @@ mod tests {
         let result = lexer.tokenize();
 
         assert!(result.is_err());
-        if let Err(str) = result {
-            assert!(str.contains("Unexpected character"));
-        } else {
-            panic!("Expected Tokenizer Error");
-        }
+        assert_eq!(
+            result.err().unwrap(),
+            Error::Unknown(
+                '?',
+                Info {
+                    line: 0,
+                    from: 10,
+                    to: 11
+                }
+            )
+        );
     }
 
     #[test]
@@ -384,10 +448,16 @@ mod tests {
         let result = lexer.tokenize();
 
         assert!(result.is_err());
-        if let Err(str) = result {
-            assert!(str.contains("Uppercase symbol C not allowed in identifier"));
-        } else {
-            panic!("Expected Tokenizer Error");
-        }
+        assert_eq!(
+            result.err().unwrap(),
+            Error::MalformedIdentifier(
+                "camelCase".to_string(),
+                Info {
+                    line: 0,
+                    from: 6,
+                    to: 15
+                }
+            )
+        );
     }
 }

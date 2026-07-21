@@ -48,11 +48,12 @@ enum Command {
 
 fn main() {
     let args = Cli::parse();
-    // println!("{:?}", args);
 
     let mut interpreter = Interpreter::new();
     if let Err(e) = interpreter.load(args.input.as_str()) {
-        println!("Error in {}: {}", args.input, e);
+        println!("Error in file {}:", args.input);
+        e.print_context();
+        println!("{}", e);
         return;
     }
 

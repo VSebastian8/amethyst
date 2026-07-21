@@ -50,7 +50,9 @@ pub fn main() {
 
                 let filename = input_parts[1];
                 if let Err(e) = interpreter.load(filename) {
-                    println!("Error loading program: {}", e);
+                    println!("Error loading program:");
+                    e.print_context();
+                    println!("{}", e);
                 } else {
                     last_file = Some(filename.to_string());
                     println!("Program loaded from {}", filename);
@@ -60,7 +62,9 @@ pub fn main() {
                 None => println!("No file to reload"),
                 Some(ref file) => {
                     if let Err(e) = interpreter.load(&file) {
-                        println!("Error reloading program: {}", e);
+                        println!("Error reloading program:");
+                        e.print_context();
+                        println!("{}", e);
                     } else {
                         println!("Program reloaded from {}", file);
                     }

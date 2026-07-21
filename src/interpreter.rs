@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ast::Move;
+use crate::info::Error;
 use crate::ir::remove_components;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
@@ -27,7 +28,7 @@ impl Interpreter {
         }
     }
 
-    pub fn load_code(&mut self, code: &str) -> Result<(), String> {
+    pub fn load_code(&mut self, code: &str) -> Result<(), Error> {
         let mut lexer = Lexer::new(code);
         let tokens = lexer.tokenize()?;
         // println!("Tokens: {:?}", tokens);
@@ -36,7 +37,7 @@ impl Interpreter {
         let program = parser.parse()?;
         // println!("Program: {:?}", program);
 
-        let automata = remove_components(program)?;
+        let automata = remove_components(program).map_err(|err| Error::Other(err))?;
         for (automaton, repr) in automata {
             self.initial_states.insert(automaton, repr.initial_state);
             for acc in repr.accept_states {
@@ -50,8 +51,8 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn load(&mut self, filename: &str) -> Result<(), String> {
-        let code = fs::read_to_string(filename).map_err(|e| e.to_string())?;
+    pub fn load(&mut self, filename: &str) -> Result<(), Error> {
+        let code = fs::read_to_string(filename).map_err(|e| Error::Other(e.to_string()))?;
         self.load_code(code.as_str())?;
         Ok(())
     }

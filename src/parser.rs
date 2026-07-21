@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::info::Error;
 use crate::token::*;
 pub struct Parser {
     tokens: Vec<TokenInfo>,
@@ -32,47 +33,53 @@ impl Parser {
         }
     }
 
-    fn expect(&mut self, expected: &Token) -> Result<(), String> {
+    fn expect(&mut self, expected: &Token) -> Result<(), Error> {
         match self.peek() {
             Some(t) if &t.token == expected => {
                 self.advance();
                 Ok(())
             }
-            Some(token) => Err(format!("Expected {:?}, found {:?}", expected, token)),
-            None => Err(format!("Expected {:?}, found end of input", expected)),
+            Some(token) => Err(Error::Unexpected(token.clone(), expected.to_string())),
+            None => Err(Error::EOF(expected.to_string())),
         }
     }
 
-    fn parse_symbol(&mut self) -> Result<char, String> {
+    fn parse_symbol(&mut self) -> Result<char, Error> {
         match self.advance() {
-            Some(t) => match &t.token {
+            Some(token) => match &token.token {
                 Token::Symbol(ch) => Ok(*ch),
-                other => Err(format!("Expected symbol, found {:?}", other)),
+                _ => Err(Error::Unexpected(token.clone(), "symbol".to_string())),
             },
-            None => Err(format!("Expected symbol, found EOF")),
+            None => Err(Error::EOF("symbol".to_string())),
         }
     }
 
-    fn parse_move(&mut self) -> Result<Move, String> {
-        match self.parse_symbol()? {
-            'L' => Ok(Move::L),
-            'R' => Ok(Move::R),
-            'N' => Ok(Move::N),
-            x => Err(format!("Expected move symbol, found {}", x)),
-        }
-    }
-
-    fn parse_ident(&mut self) -> Result<String, String> {
+    fn parse_move(&mut self) -> Result<Move, Error> {
         match self.advance() {
-            Some(t) => match &t.token {
-                Token::Ident(name) => Ok(name.clone()),
-                other => Err(format!("Expected identifier, found {:?}", other)),
+            Some(token) => match &token.token {
+                Token::Symbol(ch) => match ch {
+                    'L' => Ok(Move::L),
+                    'R' => Ok(Move::R),
+                    'N' => Ok(Move::N),
+                    _ => Err(Error::Unexpected(token.clone(), "move symbol".to_string())),
+                },
+                _ => Err(Error::Unexpected(token.clone(), "move symbol".to_string())),
             },
-            None => Err(format!("Expected identifier, found EOF")),
+            None => Err(Error::EOF("symbol".to_string())),
         }
     }
 
-    fn parse_state_name(&mut self) -> Result<(String, Option<String>), String> {
+    fn parse_ident(&mut self) -> Result<String, Error> {
+        match self.advance() {
+            Some(token) => match &token.token {
+                Token::Ident(name) => Ok(name.clone()),
+                _ => Err(Error::Unexpected(token.clone(), "identifier".to_string())),
+            },
+            None => Err(Error::EOF("identifier".to_string())),
+        }
+    }
+
+    fn parse_state_name(&mut self) -> Result<(String, Option<String>), Error> {
         let name = self.parse_ident()?;
         match self.peek_token() {
             Some(&Token::Dot) => {
@@ -83,7 +90,7 @@ impl Parser {
         }
     }
 
-    fn parse_transition(&mut self) -> Result<Transition, String> {
+    fn parse_transition(&mut self) -> Result<Transition, Error> {
         let read = self.parse_symbol()?;
         self.expect(&Token::Slash)?;
         let write = self.parse_symbol()?;
@@ -100,7 +107,7 @@ impl Parser {
         })
     }
 
-    fn parse_state(&mut self) -> Result<State, String> {
+    fn parse_state(&mut self) -> Result<State, Error> {
         if let Some(acc) = match self.peek_token() {
             Some(&Token::Accept) => Some(true),
             Some(&Token::Reject) => Some(false),
@@ -127,48 +134,50 @@ impl Parser {
             let (state, parent) = self.parse_state_name()?;
             // Parse state transitions until }
             let mut transitions = vec![];
-            match self.peek_token() {
-                Some(&Token::Arrow) => {
-                    self.advance();
-                    let new_state = self.parse_state_name()?;
-                    self.expect(&Token::Semicolon)?;
-                    transitions.push(Transition {
-                        read: '_',
-                        write: '_',
-                        mov: Move::N,
-                        state: new_state,
-                    });
-                }
-                Some(&Token::LBracket) => {
-                    self.advance();
-                    loop {
-                        match self.peek_token() {
-                            Some(&Token::RBracket) => {
-                                self.advance();
-                                break;
-                            }
-                            _ => {
-                                let t = self.parse_transition()?;
-                                println!("Parsed transition {:?}", t);
-                                transitions.push(t);
+            match self.peek() {
+                Some(token) => match token.token {
+                    Token::Arrow => {
+                        self.advance();
+                        let new_state = self.parse_state_name()?;
+                        self.expect(&Token::Semicolon)?;
+                        transitions.push(Transition {
+                            read: '_',
+                            write: '_',
+                            mov: Move::N,
+                            state: new_state,
+                        });
+                    }
+                    Token::LBracket => {
+                        self.advance();
+                        loop {
+                            match self.peek_token() {
+                                Some(&Token::RBracket) => {
+                                    self.advance();
+                                    break;
+                                }
+                                _ => {
+                                    let t = self.parse_transition()?;
+                                    transitions.push(t);
+                                }
                             }
                         }
                     }
-                }
-                _ => return Err("Expected { or  ->".to_string()),
+                    _ => return Err(Error::Unexpected(token.clone(), "`{` or `->`".to_string())),
+                },
+                None => return Err(Error::EOF("`{` or `->`".to_string())),
             }
             Ok(State::State(state, parent, init, transitions))
         }
     }
 
-    fn parse_component(&mut self) -> Result<(String, String), String> {
+    fn parse_component(&mut self) -> Result<(String, String), Error> {
         let path = self.parse_ident()?;
         self.expect(&Token::As)?;
         let name = self.parse_ident()?;
         Ok((path, name))
     }
 
-    pub fn parse_automaton(&mut self) -> Result<Automaton, String> {
+    pub fn parse_automaton(&mut self) -> Result<Automaton, Error> {
         self.expect(&Token::Automaton)?;
         let name = self.parse_ident()?;
         self.expect(&Token::LParanthesis)?;
@@ -212,7 +221,7 @@ impl Parser {
         })
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Automaton>, String> {
+    pub fn parse(&mut self) -> Result<Vec<Automaton>, Error> {
         let mut automata = vec![];
         while self.pos < self.tokens.len() {
             let automaton = self.parse_automaton()?;
