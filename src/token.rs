@@ -1,3 +1,5 @@
+use crate::info::Info;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     // keywords
@@ -20,4 +22,10 @@ pub enum Token {
     // literals
     Symbol(char),
     Ident(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TokenInfo {
+    pub token: Token,
+    pub info: Info,
 }

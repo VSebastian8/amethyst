@@ -1,12 +1,12 @@
 use crate::ast::*;
-use crate::token::Token;
+use crate::token::*;
 pub struct Parser {
-    tokens: Vec<Token>,
+    tokens: Vec<TokenInfo>,
     pos: usize,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+    pub fn new(tokens: Vec<TokenInfo>) -> Self {
         Parser { tokens, pos: 0 }
     }
 
@@ -14,11 +14,15 @@ impl Parser {
         self.pos >= self.tokens.len()
     }
 
-    fn peek(&self) -> Option<&Token> {
+    fn peek(&self) -> Option<&TokenInfo> {
         self.tokens.get(self.pos)
     }
 
-    fn advance(&mut self) -> Option<&Token> {
+    fn peek_token(&self) -> Option<&Token> {
+        self.tokens.get(self.pos).map(|t| &t.token)
+    }
+
+    fn advance(&mut self) -> Option<&TokenInfo> {
         if !self.is_at_end() {
             let token = &self.tokens[self.pos];
             self.pos += 1;
@@ -30,7 +34,7 @@ impl Parser {
 
     fn expect(&mut self, expected: &Token) -> Result<(), String> {
         match self.peek() {
-            Some(token) if token == expected => {
+            Some(t) if &t.token == expected => {
                 self.advance();
                 Ok(())
             }
@@ -41,8 +45,10 @@ impl Parser {
 
     fn parse_symbol(&mut self) -> Result<char, String> {
         match self.advance() {
-            Some(Token::Symbol(ch)) => Ok(*ch),
-            Some(other) => Err(format!("Expected symbol, found {:?}", other)),
+            Some(t) => match &t.token {
+                Token::Symbol(ch) => Ok(*ch),
+                other => Err(format!("Expected symbol, found {:?}", other)),
+            },
             None => Err(format!("Expected symbol, found EOF")),
         }
     }
@@ -58,15 +64,17 @@ impl Parser {
 
     fn parse_ident(&mut self) -> Result<String, String> {
         match self.advance() {
-            Some(Token::Ident(name)) => Ok(name.clone()),
-            Some(other) => Err(format!("Expected identifier, found {:?}", other)),
+            Some(t) => match &t.token {
+                Token::Ident(name) => Ok(name.clone()),
+                other => Err(format!("Expected identifier, found {:?}", other)),
+            },
             None => Err(format!("Expected identifier, found EOF")),
         }
     }
 
     fn parse_state_name(&mut self) -> Result<(String, Option<String>), String> {
         let name = self.parse_ident()?;
-        match self.peek() {
+        match self.peek_token() {
             Some(&Token::Dot) => {
                 self.advance();
                 Ok((self.parse_ident()?, Some(name)))
@@ -93,7 +101,7 @@ impl Parser {
     }
 
     fn parse_state(&mut self) -> Result<State, String> {
-        if let Some(acc) = match self.peek() {
+        if let Some(acc) = match self.peek_token() {
             Some(&Token::Accept) => Some(true),
             Some(&Token::Reject) => Some(false),
             _ => None,
@@ -108,7 +116,7 @@ impl Parser {
                 Ok(State::Reject(state))
             }
         } else {
-            let init = match self.peek() {
+            let init = match self.peek_token() {
                 Some(&Token::Initial) => {
                     self.advance();
                     true
@@ -119,8 +127,9 @@ impl Parser {
             let (state, parent) = self.parse_state_name()?;
             // Parse state transitions until }
             let mut transitions = vec![];
-            match self.advance() {
+            match self.peek_token() {
                 Some(&Token::Arrow) => {
+                    self.advance();
                     let new_state = self.parse_state_name()?;
                     self.expect(&Token::Semicolon)?;
                     transitions.push(Transition {
@@ -130,18 +139,22 @@ impl Parser {
                         state: new_state,
                     });
                 }
-                Some(&Token::LBracket) => loop {
-                    match self.peek() {
-                        Some(&Token::RBracket) => {
-                            self.advance();
-                            break;
-                        }
-                        _ => {
-                            let t = self.parse_transition()?;
-                            transitions.push(t);
+                Some(&Token::LBracket) => {
+                    self.advance();
+                    loop {
+                        match self.peek_token() {
+                            Some(&Token::RBracket) => {
+                                self.advance();
+                                break;
+                            }
+                            _ => {
+                                let t = self.parse_transition()?;
+                                println!("Parsed transition {:?}", t);
+                                transitions.push(t);
+                            }
                         }
                     }
-                },
+                }
                 _ => return Err("Expected { or  ->".to_string()),
             }
             Ok(State::State(state, parent, init, transitions))
@@ -162,7 +175,7 @@ impl Parser {
         // Parse component list until )
         let mut components = vec![];
         loop {
-            match self.peek() {
+            match self.peek_token() {
                 Some(&Token::RParanthesis) => {
                     self.advance();
                     break;
@@ -180,7 +193,7 @@ impl Parser {
         self.expect(&Token::LBracket)?;
         let mut states = vec![];
         loop {
-            match self.peek() {
+            match self.peek_token() {
                 Some(&Token::RBracket) => {
                     self.advance();
                     break;
@@ -214,11 +227,26 @@ mod tests {
     use super::*;
     use crate::ast::Automaton;
     use crate::ast::State;
+    use crate::info::*;
     use Token::*;
+
+    fn default_info(tokens: Vec<Token>) -> Vec<TokenInfo> {
+        tokens
+            .into_iter()
+            .map(|tok| TokenInfo {
+                token: tok,
+                info: Info {
+                    line: 0,
+                    from: 0,
+                    to: 0,
+                },
+            })
+            .collect()
+    }
 
     #[test]
     fn test_parse_transition() {
-        let tokens = vec![
+        let tokens = default_info(vec![
             Symbol('A'),
             Slash,
             Symbol('B'),
@@ -227,7 +255,7 @@ mod tests {
             Arrow,
             Ident("s2".to_string()),
             Semicolon,
-        ];
+        ]);
         let mut parser = Parser::new(tokens);
         let t = parser.parse_transition().unwrap();
 
@@ -261,7 +289,7 @@ mod tests {
             Semicolon,
             RBracket,
         ];
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(default_info(tokens));
         let s = parser.parse_state().unwrap();
 
         assert_eq!(
@@ -282,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_arrow_state() {
-        let tokens = vec![
+        let tokens = default_info(vec![
             State,
             Ident("x".to_string()),
             Dot,
@@ -292,7 +320,7 @@ mod tests {
             Dot,
             Ident("some_name2".to_string()),
             Semicolon,
-        ];
+        ]);
         let mut parser = Parser::new(tokens);
         let s = parser.parse_state().unwrap();
 
@@ -315,13 +343,13 @@ mod tests {
     #[test]
     fn test_final_states() {
         let tokens = vec![Accept, State, Ident("done".to_string()), Semicolon];
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(default_info(tokens));
         let s = parser.parse_state().unwrap();
 
         assert_eq!(s, State::Accept("done".to_string()));
 
         let tokens = vec![Reject, State, Ident("over".to_string()), Semicolon];
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(default_info(tokens));
         let s = parser.parse_state().unwrap();
 
         assert_eq!(s, State::Reject("over".to_string()));
@@ -370,7 +398,7 @@ mod tests {
             Semicolon,
             RBracket,
         ];
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(default_info(tokens));
         let a = parser.parse_automaton().unwrap();
 
         assert_eq!(
@@ -412,7 +440,7 @@ mod tests {
 
     #[test]
     fn test_parse_error_transition() {
-        let tokens = vec![
+        let tokens = default_info(vec![
             Symbol('A'),
             Slash,
             Ident("bye".to_string()),
@@ -421,7 +449,7 @@ mod tests {
             Arrow,
             Ident("s2".to_string()),
             Semicolon,
-        ];
+        ]);
         let mut parser = Parser::new(tokens);
         let result = parser.parse_transition();
 
@@ -430,17 +458,17 @@ mod tests {
 
     #[test]
     fn test_parse_error_state() {
-        let tokens = vec![State, Ident("some".to_string()), LBracket];
+        let tokens = default_info(vec![State, Ident("some".to_string()), LBracket]);
         let mut parser = Parser::new(tokens);
         let result = parser.parse_state();
         assert!(result.is_err());
 
-        let tokens = vec![
+        let tokens = default_info(vec![
             State,
             Ident("some".to_string()),
             Arrow,
             Ident("other".to_string()),
-        ];
+        ]);
         let mut parser = Parser::new(tokens);
         let result = parser.parse_state();
         assert!(result.is_err());

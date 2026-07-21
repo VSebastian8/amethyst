@@ -1,7 +1,9 @@
-use crate::token::Token;
+use crate::{info::Info, token::*};
 
 pub struct Lexer {
     chars: std::iter::Peekable<std::vec::IntoIter<char>>,
+    line: u32,
+    column: u32,
 }
 
 impl Lexer {
@@ -10,18 +12,34 @@ impl Lexer {
 
         Self {
             chars: chars.into_iter().peekable(),
+            line: 0,
+            column: 0,
         }
     }
 
+    pub fn advance(&mut self) -> Option<char> {
+        if let Some(&ch) = self.chars.peek() {
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 0;
+            } else {
+                self.column += 1;
+            }
+        }
+        self.chars.next()
+    }
+
     /// Tokenize the entire input
-    pub fn tokenize(&mut self) -> Result<Vec<Token>, String> {
+    pub fn tokenize(&mut self) -> Result<Vec<TokenInfo>, String> {
         let mut tokens = Vec::new();
         while let Some(&ch) = self.chars.peek() {
-            let mut skip = true;
             if ch.is_whitespace() {
-                self.chars.next();
+                self.advance();
                 continue;
             }
+            let mut skip = true;
+            let from = self.column;
+            let line = self.line;
             let token = match ch {
                 '(' => Ok(Token::LParanthesis),
                 ')' => Ok(Token::RParanthesis),
@@ -33,11 +51,11 @@ impl Lexer {
                 // special cases
                 '{' => {
                     // either bracket or block comment
-                    self.chars.next();
+                    self.advance();
                     if let Some(&c) = self.chars.peek() {
                         match c {
                             '-' => {
-                                self.chars.next();
+                                self.advance();
                                 self.read_block_comment()?;
                                 continue;
                             }
@@ -52,12 +70,12 @@ impl Lexer {
                 }
                 '-' => {
                     // either arrow or line comment
-                    self.chars.next();
+                    self.advance();
                     if let Some(&c) = self.chars.peek() {
                         match c {
                             '>' => Ok(Token::Arrow),
                             '-' => {
-                                self.chars.next();
+                                self.advance();
                                 self.read_line_comment();
                                 continue;
                             }
@@ -75,16 +93,23 @@ impl Lexer {
                 _ => Err(format!("Unexpected character: '{}'", ch)),
             }?;
             if skip {
-                self.chars.next();
+                self.advance();
             }
-            tokens.push(token);
+            tokens.push(TokenInfo {
+                token,
+                info: Info {
+                    line,
+                    from,
+                    to: self.column,
+                },
+            });
         }
 
         Ok(tokens)
     }
 
     fn read_line_comment(&mut self) {
-        while let Some(c) = self.chars.next() {
+        while let Some(c) = self.advance() {
             if c == '\n' {
                 break;
             }
@@ -92,9 +117,9 @@ impl Lexer {
     }
 
     fn read_block_comment(&mut self) -> Result<(), String> {
-        while let Some(c) = self.chars.next() {
+        while let Some(c) = self.advance() {
             if c == '-' {
-                if let Some(c2) = self.chars.next() {
+                if let Some(c2) = self.advance() {
                     if c2 == '}' {
                         return Ok(());
                     }
@@ -112,7 +137,7 @@ impl Lexer {
             }
             if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' {
                 word.push(c);
-                self.chars.next();
+                self.advance();
             } else {
                 break;
             }
@@ -147,7 +172,7 @@ mod tests {
         let mut lexer = Lexer::new("  automaton{  accept state acceptstate }   ");
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(
-            tokens,
+            tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
             vec![
                 Automaton,
                 LBracket,
@@ -163,7 +188,10 @@ mod tests {
     fn test_keywords() {
         let mut lexer = Lexer::new("initial accept state automaton reject");
         let tokens = lexer.tokenize().unwrap();
-        assert_eq!(tokens, vec![Initial, Accept, State, Automaton, Reject,]);
+        assert_eq!(
+            tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
+            vec![Initial, Accept, State, Automaton, Reject,]
+        );
     }
 
     #[test]
@@ -171,7 +199,7 @@ mod tests {
         let mut lexer = Lexer::new("(){/ -> ., ;}");
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(
-            tokens,
+            tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
             vec![
                 LParanthesis,
                 RParanthesis,
@@ -191,7 +219,7 @@ mod tests {
         let mut lexer = Lexer::new("ABZ129_@&");
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(
-            tokens,
+            tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
             vec![
                 Symbol('A'),
                 Symbol('B'),
@@ -213,21 +241,126 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Automaton,
-                Initial,
-                State,
-                Ident("first".to_string()),
-                LBracket,
-                Symbol('A'),
-                Slash,
-                Symbol('B'),
-                Comma,
-                Symbol('L'),
-                Arrow,
-                Ident("second_state2".to_string()),
-                Semicolon,
-                RBracket,
-                RBracket
+                TokenInfo {
+                    token: Automaton,
+                    info: Info {
+                        line: 0,
+                        from: 0,
+                        to: 9
+                    }
+                },
+                TokenInfo {
+                    token: Initial,
+                    info: Info {
+                        line: 1,
+                        from: 0,
+                        to: 7
+                    }
+                },
+                TokenInfo {
+                    token: State,
+                    info: Info {
+                        line: 1,
+                        from: 8,
+                        to: 13
+                    }
+                },
+                TokenInfo {
+                    token: Ident("first".to_string()),
+                    info: Info {
+                        line: 1,
+                        from: 14,
+                        to: 19
+                    }
+                },
+                TokenInfo {
+                    token: LBracket,
+                    info: Info {
+                        line: 1,
+                        from: 20,
+                        to: 21
+                    }
+                },
+                TokenInfo {
+                    token: Symbol('A'),
+                    info: Info {
+                        line: 2,
+                        from: 1,
+                        to: 2
+                    }
+                },
+                TokenInfo {
+                    token: Slash,
+                    info: Info {
+                        line: 2,
+                        from: 3,
+                        to: 4
+                    }
+                },
+                TokenInfo {
+                    token: Symbol('B'),
+                    info: Info {
+                        line: 2,
+                        from: 5,
+                        to: 6
+                    }
+                },
+                TokenInfo {
+                    token: Comma,
+                    info: Info {
+                        line: 2,
+                        from: 6,
+                        to: 7
+                    }
+                },
+                TokenInfo {
+                    token: Symbol('L'),
+                    info: Info {
+                        line: 2,
+                        from: 8,
+                        to: 9
+                    }
+                },
+                TokenInfo {
+                    token: Arrow,
+                    info: Info {
+                        line: 2,
+                        from: 10,
+                        to: 12
+                    }
+                },
+                TokenInfo {
+                    token: Ident("second_state2".to_string()),
+                    info: Info {
+                        line: 2,
+                        from: 13,
+                        to: 26
+                    }
+                },
+                TokenInfo {
+                    token: Semicolon,
+                    info: Info {
+                        line: 2,
+                        from: 26,
+                        to: 27
+                    }
+                },
+                TokenInfo {
+                    token: RBracket,
+                    info: Info {
+                        line: 4,
+                        from: 21,
+                        to: 22
+                    }
+                },
+                TokenInfo {
+                    token: RBracket,
+                    info: Info {
+                        line: 4,
+                        from: 22,
+                        to: 23
+                    }
+                },
             ]
         );
     }
