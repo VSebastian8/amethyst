@@ -23,21 +23,31 @@ impl Interpreter {
             final_states: HashMap::new(),
             transitions: HashMap::new(),
             state: "".to_string(),
-            left: vec![],
-            right: vec![],
+            left: Vec::new(),
+            right: Vec::new(),
         }
     }
 
-    pub fn load_code(&mut self, code: &str) -> Result<(), Error> {
+    pub fn load_code(&mut self, code: &str) -> Result<(), Vec<Error>> {
         let mut lexer = Lexer::new(code);
-        let tokens = lexer.tokenize()?;
-        // println!("Tokens: {:?}", tokens);
+        let tokens = lexer.tokenize();
+        // println!(
+        //     "Tokens: {:?}",
+        //     tokens.iter().map(|t| t.token.clone()).collect::<Vec<_>>()
+        // );
 
         let mut parser = Parser::new(tokens);
-        let program = parser.parse()?;
+        let program = parser.parse();
         // println!("Program: {:?}", program);
 
-        let automata = remove_components(program).map_err(|err| Error::Other(err))?;
+        let errors: Vec<Error> = lexer.errors.into_iter().chain(parser.errors).collect();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+
+        let automata = remove_components(program)
+            .map_err(|err| Error::Other(err))
+            .map_err(|e| vec![e])?;
         for (automaton, repr) in automata {
             self.initial_states.insert(automaton, repr.initial_state);
             for acc in repr.accept_states {
@@ -51,8 +61,10 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn load(&mut self, filename: &str) -> Result<(), Error> {
-        let code = fs::read_to_string(filename).map_err(|e| Error::Other(e.to_string()))?;
+    pub fn load(&mut self, filename: &str) -> Result<(), Vec<Error>> {
+        let code = fs::read_to_string(filename)
+            .map_err(|e| Error::Other(e.to_string()))
+            .map_err(|e| vec![e])?;
         self.load_code(code.as_str())?;
         Ok(())
     }

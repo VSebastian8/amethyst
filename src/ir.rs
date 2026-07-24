@@ -167,7 +167,7 @@ impl IR {
                         }
                         _ => {
                             // Only rewrite final states
-                            if comps_output[comp].iter().find(|(st, _)| st == name) == None {
+                            if comps_output[comp].iter().all(|(st, _)| st != name) {
                                 return Err(
                                     "Can only rewrite final states from components".to_string()
                                 );
@@ -336,7 +336,7 @@ mod tests {
     pub fn test_flat_automaton() {
         let program = vec![Automaton {
             name: "main".to_string(),
-            components: vec![],
+            components: Vec::new(),
             states: vec![
                 State::State(
                     "first".to_string(),
@@ -388,7 +388,7 @@ mod tests {
         let program = vec![
             Automaton {
                 name: "move".to_string(),
-                components: vec![],
+                components: Vec::new(),
                 states: vec![
                     State::State(
                         "q0".to_string(),

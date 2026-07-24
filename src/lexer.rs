@@ -5,6 +5,7 @@ use crate::{
 
 pub struct Lexer {
     chars: std::iter::Peekable<std::vec::IntoIter<char>>,
+    pub errors: Vec<Error>,
     line: u32,
     column: u32,
 }
@@ -15,6 +16,7 @@ impl Lexer {
 
         Self {
             chars: chars.into_iter().peekable(),
+            errors: Vec::new(),
             line: 0,
             column: 0,
         }
@@ -33,7 +35,7 @@ impl Lexer {
     }
 
     /// Tokenize the entire input
-    pub fn tokenize(&mut self) -> Result<Vec<TokenInfo>, Error> {
+    pub fn tokenize(&mut self) -> Vec<TokenInfo> {
         let mut tokens = Vec::new();
         while let Some(&ch) = self.chars.peek() {
             if ch.is_whitespace() {
@@ -44,13 +46,13 @@ impl Lexer {
             let from = self.column;
             let line = self.line;
             let token = match ch {
-                '(' => Ok(Token::LParanthesis),
-                ')' => Ok(Token::RParanthesis),
-                '}' => Ok(Token::RBracket),
-                '/' => Ok(Token::Slash),
-                ',' => Ok(Token::Comma),
-                ';' => Ok(Token::Semicolon),
-                '.' => Ok(Token::Dot),
+                '(' => Token::LParanthesis,
+                ')' => Token::RParanthesis,
+                '}' => Token::RBracket,
+                '/' => Token::Slash,
+                ',' => Token::Comma,
+                ';' => Token::Semicolon,
+                '.' => Token::Dot,
                 // special cases
                 '{' => {
                     // either bracket or block comment
@@ -59,16 +61,16 @@ impl Lexer {
                         match c {
                             '-' => {
                                 self.advance();
-                                self.read_block_comment()?;
+                                self.read_block_comment();
                                 continue;
                             }
                             _ => {
                                 skip = false;
-                                Ok(Token::LBracket)
+                                Token::LBracket
                             }
                         }
                     } else {
-                        Err(Error::NotTerminated(
+                        self.errors.push(Error::NotTerminated(
                             "`{`".to_string(),
                             "`}`".to_string(),
                             Info {
@@ -76,7 +78,8 @@ impl Lexer {
                                 from,
                                 to: self.column,
                             },
-                        ))
+                        ));
+                        continue;
                     }
                 }
                 '-' => {
@@ -84,52 +87,54 @@ impl Lexer {
                     self.advance();
                     if let Some(&c) = self.chars.peek() {
                         match c {
-                            '>' => Ok(Token::Arrow),
+                            '>' => Token::Arrow,
                             '-' => {
                                 self.advance();
                                 self.read_line_comment();
                                 continue;
                             }
                             _ => {
-                                self.advance();
-                                Err(Error::Unknown(
+                                self.errors.push(Error::Unknown(
                                     '-',
                                     Info {
                                         line,
                                         from,
                                         to: self.column,
                                     },
-                                ))
+                                ));
+                                continue;
                             }
                         }
                     } else {
-                        Err(Error::Unknown(
+                        self.errors.push(Error::Unknown(
                             '-',
                             Info {
                                 line,
                                 from,
                                 to: self.column,
                             },
-                        ))
+                        ));
+                        continue;
                     }
                 }
                 'a'..='z' => {
                     skip = false;
                     self.read_word()
                 }
-                'A'..='Z' | '0'..='9' | '_' | '@' | '&' => Ok(Token::Symbol(ch)),
+                'A'..='Z' | '0'..='9' | '_' | '@' | '&' => Token::Symbol(ch),
                 _ => {
                     self.advance();
-                    Err(Error::Unknown(
+                    self.errors.push(Error::Unknown(
                         ch,
                         Info {
                             line,
                             from,
                             to: self.column,
                         },
-                    ))
+                    ));
+                    continue;
                 }
-            }?;
+            };
             if skip {
                 self.advance();
             }
@@ -142,8 +147,8 @@ impl Lexer {
                 },
             });
         }
-
-        Ok(tokens)
+        // Return the tokens
+        tokens
     }
 
     fn read_line_comment(&mut self) {
@@ -154,30 +159,30 @@ impl Lexer {
         }
     }
 
-    fn read_block_comment(&mut self) -> Result<(), Error> {
+    fn read_block_comment(&mut self) {
         let line = self.line;
-        let from = self.column;
+        let to = self.column;
         while let Some(c) = self.advance() {
             if c == '-' {
                 if let Some(c2) = self.advance() {
                     if c2 == '}' {
-                        return Ok(());
+                        return;
                     }
                 }
             }
         }
-        Err(Error::NotTerminated(
+        self.errors.push(Error::NotTerminated(
             "block comment".to_string(),
             "`-}`".to_string(),
             Info {
                 line,
-                from,
-                to: from + 2,
+                from: to - 2,
+                to,
             },
         ))
     }
 
-    fn read_word(&mut self) -> Result<Token, Error> {
+    fn read_word(&mut self) -> Token {
         let from = self.column;
         let mut word = String::new();
         while let Some(&c) = self.chars.peek() {
@@ -188,11 +193,12 @@ impl Lexer {
                 self.advance();
             }
         }
-        if let Some(_) =
-            word.find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
+        if word
+            .chars()
+            .any(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
         {
-            return Err(Error::MalformedIdentifier(
-                word,
+            self.errors.push(Error::MalformedIdentifier(
+                word.clone(),
                 Info {
                     line: self.line,
                     from: from,
@@ -201,7 +207,7 @@ impl Lexer {
             ));
         }
 
-        Ok(match word.as_str() {
+        match word.as_str() {
             "automaton" => Token::Automaton,
             "state" => Token::State,
             "initial" => Token::Initial,
@@ -209,7 +215,7 @@ impl Lexer {
             "reject" => Token::Reject,
             "as" => Token::As,
             _ => Token::Ident(word),
-        })
+        }
     }
 }
 
@@ -221,14 +227,14 @@ mod tests {
     #[test]
     fn test_empty_input() {
         let mut lexer = Lexer::new("");
-        let tokens = lexer.tokenize().unwrap();
+        let tokens = lexer.tokenize();
         assert_eq!(tokens.len(), 0);
     }
 
     #[test]
     fn test_whitespace_handling() {
         let mut lexer = Lexer::new("  automaton{  accept state acceptstate }   ");
-        let tokens = lexer.tokenize().unwrap();
+        let tokens = lexer.tokenize();
         assert_eq!(
             tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
             vec![
@@ -245,7 +251,7 @@ mod tests {
     #[test]
     fn test_keywords() {
         let mut lexer = Lexer::new("initial accept state automaton reject");
-        let tokens = lexer.tokenize().unwrap();
+        let tokens = lexer.tokenize();
         assert_eq!(
             tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
             vec![Initial, Accept, State, Automaton, Reject,]
@@ -255,7 +261,7 @@ mod tests {
     #[test]
     fn test_punctuation() {
         let mut lexer = Lexer::new("(){/ -> ., ;}");
-        let tokens = lexer.tokenize().unwrap();
+        let tokens = lexer.tokenize();
         assert_eq!(
             tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
             vec![
@@ -275,7 +281,7 @@ mod tests {
     #[test]
     fn test_symbols() {
         let mut lexer = Lexer::new("ABZ129_@&");
-        let tokens = lexer.tokenize().unwrap();
+        let tokens = lexer.tokenize();
         assert_eq!(
             tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
             vec![
@@ -295,7 +301,7 @@ mod tests {
     #[test]
     fn test_comments() {
         let mut lexer = Lexer::new("automaton -- This is a line comment\ninitial state first {\n A / B, L -> second_state2; {- This \n - is a - \n multiline comment -}}}");
-        let tokens = lexer.tokenize().unwrap();
+        let tokens = lexer.tokenize();
         assert_eq!(
             tokens,
             vec![
@@ -426,38 +432,111 @@ mod tests {
     #[test]
     fn test_invalid_character() {
         let mut lexer = Lexer::new("automaton ?");
-        let result = lexer.tokenize();
+        lexer.tokenize();
 
-        assert!(result.is_err());
         assert_eq!(
-            result.err().unwrap(),
-            Error::Unknown(
+            lexer.errors,
+            vec![Error::Unknown(
                 '?',
                 Info {
                     line: 0,
                     from: 10,
                     to: 11
                 }
-            )
+            )]
         );
     }
 
     #[test]
     fn test_invalid_identifier() {
         let mut lexer = Lexer::new("state camelCase");
-        let result = lexer.tokenize();
+        lexer.tokenize();
 
-        assert!(result.is_err());
         assert_eq!(
-            result.err().unwrap(),
-            Error::MalformedIdentifier(
+            lexer.errors,
+            vec![Error::MalformedIdentifier(
                 "camelCase".to_string(),
                 Info {
                     line: 0,
                     from: 6,
                     to: 15
                 }
-            )
+            )]
+        );
+    }
+
+    #[test]
+    fn test_mutliple_errors() {
+        let mut lexer = Lexer::new("stAte \n#q0 -ups {- some\nthing - } ");
+        let tokens = lexer.tokenize();
+
+        assert_eq!(
+            tokens,
+            vec![
+                TokenInfo {
+                    token: Ident("stAte".to_string()),
+                    info: Info {
+                        line: 0,
+                        from: 0,
+                        to: 5
+                    }
+                },
+                TokenInfo {
+                    token: Ident("q0".to_string()),
+                    info: Info {
+                        line: 1,
+                        from: 1,
+                        to: 3
+                    }
+                },
+                TokenInfo {
+                    token: Ident("ups".to_string()),
+                    info: Info {
+                        line: 1,
+                        from: 5,
+                        to: 8
+                    }
+                },
+            ]
+        );
+
+        assert_eq!(
+            lexer.errors,
+            vec![
+                Error::MalformedIdentifier(
+                    "stAte".to_string(),
+                    Info {
+                        line: 0,
+                        from: 0,
+                        to: 5
+                    }
+                ),
+                Error::Unknown(
+                    '#',
+                    Info {
+                        line: 1,
+                        from: 0,
+                        to: 1
+                    }
+                ),
+                Error::Unknown(
+                    '-',
+                    Info {
+                        line: 1,
+                        from: 4,
+                        to: 5
+                    }
+                ),
+                Error::NotTerminated(
+                    "block comment".to_string(),
+                    "`-}`".to_string(),
+                    Info {
+                        line: 1,
+                        from: 9,
+                        to: 11
+                    }
+                )
+            ]
         );
     }
 }

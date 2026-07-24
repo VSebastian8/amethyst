@@ -50,10 +50,12 @@ fn main() {
     let args = Cli::parse();
 
     let mut interpreter = Interpreter::new();
-    if let Err(e) = interpreter.load(args.input.as_str()) {
-        println!("Error in file {}:", args.input);
-        e.print_context();
-        println!("{}", e);
+    if let Err(errors) = interpreter.load(args.input.as_str()) {
+        println!("Loading file {} failed, encountered errors:", args.input);
+        for e in errors {
+            e.print_context();
+            println!("{}", e);
+        }
         return;
     }
 

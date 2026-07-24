@@ -16,6 +16,7 @@ pub enum Error {
     MalformedIdentifier(String, Info),
     EOF(String),
     Unexpected(TokenInfo, String),
+    Missing(String, Info),
     Other(String),
 }
 
@@ -26,9 +27,10 @@ impl Error {
             Error::NotTerminated(_, _, info) => info,
             Error::MalformedIdentifier(_, info) => info,
             Error::Unexpected(tok, _) => &tok.info,
+            Error::Missing(_, info) => info,
             _ => return,
         };
-        println!("At line {}, columns {} - {}:", line, from, to);
+        println!("At line {}, columns {} - {}:", line + 1, from + 1, to + 1);
     }
 }
 
@@ -47,6 +49,7 @@ impl Display for Error {
             ),
             Error::Unexpected(token, str) => write!(f, "Expected {}, found {}", str, token.token),
             Error::EOF(msg) => write!(f, "Reached EndOfFile, expected {}", msg),
+            Error::Missing(expected, _) => write!(f, "Missing {}", expected),
             Error::Other(msg) => write!(f, "{}", msg),
         }
     }
