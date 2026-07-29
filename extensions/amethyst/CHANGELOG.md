@@ -5,12 +5,12 @@ All notable changes to the `amethyst syntax highlighting` extension will be docu
 ## [Unreleased]
 
 - Full syntax highlighting for the original version of the amethyst syntax
-- **Symbols**: blank(`@`), wildcard(`_`), characters and upper letters, other(`-+=/()`...)
-- **Operators**: write(`/`), move(`,`), arrow(`->`)
-- **Constants**: numeric(`0-9`), move(`LRN`)
-- **Declarations**: automata, state
-- **Control**: initial, accept, reject
-- **Macros**: complement, intersect, reunion,chain, repeat, move, override, place, shift
+- **Symbols**: blank(`@`), wildcard(`_`), characters and upper letters
+- **Operators**: write(`/`), move(`,`), arrow(`->`), dot(`.`)
+- **Constants**: move(`LRN`)
+- **Declarations**: automaton, state
+- **Control**: initial, accept, reject, as
+- **Patterns**: tbd
 - **Comments**: line(`--`), block(`{--}`)
 
 ## Initial release

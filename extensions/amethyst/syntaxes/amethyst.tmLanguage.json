@@ -6,19 +6,10 @@
 			"include": "#comments"
 		},
 		{
-			"include": "#strings"
-		},
-		{
-			"include": "#chars"
-		},
-		{
 			"include": "#keywords"
 		},
 		{
 			"include": "#symbols"
-		},
-		{
-			"include": "#constants"
 		},
 		{
 			"include": "#entities"
@@ -53,25 +44,6 @@
 				}
 			]
 		},
-		"strings": {
-			"name": "string.quoted.double.myst",
-			"begin": "\"",
-			"end": "\"",
-			"patterns": [
-				{
-					"name": "constant.character.escape.myst",
-					"match": "\\\\."
-				}
-			]
-		},
-		"chars": {
-			"patterns": [
-				{
-					"name": "string.quoted.single.myst",
-					"match": "('.')"
-				}
-			]
-		},
 		"keywords": {
 			"patterns": [
 				{
@@ -80,11 +52,7 @@
 				},
 				{
 					"name": "keyword.control.myst",
-					"match": "(?<!\\.)\\b(initial|accept|reject)\\b"
-				},
-				{
-					"name": "keyword.declaration.myst",
-					"match": "\\b(complement|intersect|reunion|chain|repeat|move|override|place|shift)\\b"
+					"match": "(?<!\\.)\\b(initial|accept|reject|as)\\b"
 				},
 				{
 					"name": "keyword.operator.write.myst",
@@ -99,19 +67,11 @@
 					"match": "(\\,)"
 				},
 				{
-					"name": "keyword.operator.equals.myst",
+					"name": "keyword.operator.assignment.myst",
 					"match": "(\\=)"
 				},
 				{
-					"name": "punctuation.definition.symbol.blank.myst",
-					"match": "(@)"
-				},
-				{
-					"name": "punctuation.definition.symbol.wildcard.myst",
-					"match": "(_)"
-				},
-				{
-					"name": "punctuation.definition.symbol.wildcard.myst",
+					"name": "keyword.operator.dot.myst",
 					"match": "(\\.)"
 				}
 			]
@@ -119,55 +79,68 @@
 		"symbols": {
 			"patterns": [
 				{
-					"name": "punctuation.definition.symbol",
-					"match": "([A-Z0-9\\!\\#\\$\\%\\^&\\*\\[\\]\\-\\+\\=\\/\\?])(?=\\s*\\/)"
+					"name": "support.constant.move.myst",
+					"match": "(?<=\\,\\s*)(L|R|N)"
 				},
 				{
-					"name": "punctuation.definition.symbol",
-					"match": "(?<=\\/\\s*)([A-Z0-9\\!\\#\\$\\%\\^&\\*\\[\\]\\-\\+\\=\\/\\?])"
-				}
-			]
-		},
-		"constants": {
-			"patterns": [
-				{
-					"name": "constant.language.move.myst",
-					"match": "\\b(L|R|N)\\b"
+					"name": "constant.language.symbol.blank.myst",
+					"match": "(@)"
 				},
 				{
-					"name": "constant.numeric.myst",
-					"match": "\\b([0-9]+)\\b"
+					"name": "constant.language.symbol.wildcard.myst",
+					"match": "(_)"
+				},
+				{
+					"name": "constant.language.symbol.and.myst",
+					"match": "(&)"
+				},
+				{
+					"name": "constant.language.symbol.myst",
+					"match": "([A-Z0-9])"
+				},
+				{
+					"name": "punctuation.semi.myst",
+					"match": "(;)"
+				},
+				{
+					"name": "punctuation.brackets.curly.myst",
+					"match": "(\\{|\\})"
+				},
+				{
+					"name": "punctuation.brackets.round.myst",
+					"match": "(\\(|\\))"
 				}
 			]
 		},
 		"entities": {
 			"patterns": [
 				{
-					"name": "entity.name.function.myst",
-					"match": "\\b([a-z][a-z0-9_]*)\\b(?=\\s*(\\(|\\{|\\=))"
+					"name": "entity.name.function.automaton.myst",
+					"match": "(?<=automaton\\s+)([a-z][a-z0-9_]*)"
 				},
 				{
-					"match": "(?<=\\(|,)\\s*([a-z][a-z0-9_\\.]*)\\s+([a-z][a-z0-9_]*)",
-					"captures": {
-						"1": {
-							"name": "entity.name.type.myst"
-						},
-						"2": {
-							"name": "variable.parameter.myst"
-						}
-					}
+					"name": "entity.name.type.component.myst",
+					"match": "([a-z][a-z0-9_]*)(?=\\s+as)"
 				},
 				{
-					"name": "entity.name.type.myst",
-					"match": "(?<=\\(|,)\\s*([a-z][a-z0-9_]*)"
+					"name": "entity.name.type.alias.myst",
+					"match": "(?<=as\\s+)([a-z][a-z0-9_]*)"
 				},
 				{
-					"name": "variable.parameter.myst",
-					"match": "\\b([a-z][a-z0-9_]*)(?=\\.)"
+					"name": "entity.name.type.alias.myst",
+					"match": "([a-z][a-z0-9_]*)(?=\\.)"
 				},
 				{
-					"name": "entity.name.function.myst",
-					"match": "(?<=(\\-\\>\\s*|state\\s*|\\.))\\b([a-z][a-z0-9_]*)\\b"
+					"name": "variable.other.state.myst",
+					"match": "(?<=\\.)([a-z][a-z0-9_]*)"
+				},
+				{
+					"name": "variable.other.state.myst",
+					"match": "(?<=state\\s*)([a-z][a-z0-9_]*)"
+				},
+				{
+					"name": "variable.other.state.myst",
+					"match": "(?<=->\\s*)([a-z][a-z0-9_]*)"
 				}
 			]
 		}
