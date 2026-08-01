@@ -20,6 +20,10 @@ serial_test = "0.5"
 ctor = "0.1"
 [dependencies]
 clap = { version = "4.6.2", features = ["derive"] }
+lsp-server = "0.7"
+lsp-types = "0.95"
+serde = "1.0.229"
+serde_json = "1"
 colored = "3.0.0"
 [profile.release]
 opt-level = 1

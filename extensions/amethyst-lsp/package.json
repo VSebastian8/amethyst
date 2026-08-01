@@ -1,0 +1,52 @@
+{
+  "name": "amethyst-lsp",
+  "displayName": "Amethyst LSP",
+  "description": "VS Code client for the Amethyst LSP, served via 'geode server'",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:amethyst"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Amethyst LSP",
+      "properties": {
+        "amethystLsp.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the geode binary (the client runs '<path> server'). If empty, tries ../../server/target/debug/geode relative to the extension, then falls back to 'geode' on PATH."
+        },
+        "amethystLsp.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace LSP communication between the client and server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

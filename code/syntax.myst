@@ -1,0 +1,17 @@
+{-
+This is a file with random syntax highlighting
+-}automaton
+-- Syntax highlighting should work even when we have errors
+-- it's more like tokenizing
+operators -> , . = /
+symbols A B 0 @ _ L R &  not anymore: # ? 
+-- + small parsing for declarations (automata, states, components)
+automaton hi (place as x) {
+    initial state q_0 { A / 0, L -> hi; } 
+    state x.y {
+        @ / _, R -> x.done_12;
+        X / , N
+    }
+    accept state hi;
+    state x.done_12 -> hi;
+}
