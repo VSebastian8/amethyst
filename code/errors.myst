@@ -1,0 +1,33 @@
+automaton validator() {
+    -- At start of input
+    initial stat q0 {
+        a / b, R -> q1; -- consume first A
+        _ / _, N -> no_more_a;
+    }
+    -- Just consumed 1 A
+    state q1 {
+        A / A, R -> q1;
+        Y / Y, R -> q1;
+        B / Y, R -> q2; -- consume first B
+        _ / _, N -> false;
+    }
+    static
+    state q2 {
+        B  B, R -> q2;
+        Z / Z, R -> q2;
+        C / Z, A -> q3;
+        _ / _, N -> false;
+    }
+    -- Find first A
+    state q?3 {
+        X / X, R -> q0;
+        ? / _, L -> q3;
+    }
+    accept state true
+    reject state false;
+}
+automaton hi (pla?ce xor
+    place as xor, ) {
+
+}
+{- Validate whether input has form a^nb^nc^n

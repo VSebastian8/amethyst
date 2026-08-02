@@ -392,12 +392,13 @@ impl Parser {
 
     fn parse_components(&mut self) -> Vec<(String, String)> {
         let mut components = Vec::new();
+        let mut recovered = false;
         loop {
             match self.peek_token() {
                 None => break,
                 Some(&Token::LBracket) => {
                     self.errors
-                        .push(Error::Missing("`(`".to_string(), self.get_info()));
+                        .push(Error::Missing("`)`".to_string(), self.get_info()));
                     break;
                 }
                 Some(&Token::RParanthesis) => {
@@ -405,13 +406,16 @@ impl Parser {
                     break;
                 }
                 _ => {
-                    let sep = if components.len() > 0 {
+                    let sep = if components.len() > 0 && !recovered {
                         self.expect(&Token::Comma)
                     } else {
                         Ok(())
                     };
                     match sep.and(self.parse_component()) {
-                        Ok(c) => components.push(c),
+                        Ok(c) => {
+                            recovered = false;
+                            components.push(c)
+                        }
                         Err(err) => {
                             self.errors.push(err);
                             let line = self.get_line();
@@ -420,12 +424,17 @@ impl Parser {
                             loop {
                                 match self.peek() {
                                     None => break,
+                                    Some(token) if token.token == Token::Comma => {
+                                        self.advance();
+                                        recovered = true;
+                                        break;
+                                    }
                                     Some(token)
-                                        if token.token == Token::Comma
-                                            || token.token == Token::RParanthesis
+                                        if token.token == Token::RParanthesis
                                             || token.token == Token::LBracket
                                             || token.info.line != line =>
                                     {
+                                        recovered = true;
                                         break;
                                     }
                                     _ => {
@@ -846,6 +855,55 @@ mod tests {
                     from: 9,
                     to: 10,
                 }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_error_components() {
+        let tokens = default_info(vec![
+            Automaton,
+            Ident("ok".to_string()),
+            LParanthesis,
+            Ident("place".to_string()),
+            Ident("xor".to_string()),
+            Comma,
+            Ident("good".to_string()),
+            As,
+            Ident("dea?d".to_string()),
+            Comma,
+            RParanthesis,
+            LBracket,
+            RBracket,
+        ]);
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse_automaton();
+        assert!(result.is_some());
+        assert_eq!(
+            parser.errors,
+            vec![
+                Error::Unexpected(
+                    TokenInfo {
+                        token: Ident("xor".to_string()),
+                        info: Info {
+                            line: 0,
+                            from: 0,
+                            to: 0
+                        }
+                    },
+                    "keyword `as`".to_string()
+                ),
+                Error::Unexpected(
+                    TokenInfo {
+                        token: RParanthesis,
+                        info: Info {
+                            line: 0,
+                            from: 0,
+                            to: 0
+                        }
+                    },
+                    "identifier".to_string()
+                )
             ]
         );
     }

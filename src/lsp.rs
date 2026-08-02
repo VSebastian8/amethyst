@@ -4,12 +4,19 @@ use std::error::Error;
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
 use lsp_types::{
     notification::{DidChangeTextDocument, DidOpenTextDocument, Notification as _},
-    request::{Completion, HoverRequest},
+    request::{Completion, DocumentDiagnosticRequest, HoverRequest},
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, MarkupContent, MarkupKind, OneOf, Position,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    Diagnostic, DiagnosticOptions, DiagnosticSeverity, DidChangeTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    FullDocumentDiagnosticReport, Hover, HoverContents, HoverParams, HoverProviderCapability,
+    InitializeParams, MarkupContent, MarkupKind, OneOf, Position, Range,
+    RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, Url,
 };
+
+use crate::info;
+use crate::lexer::Lexer;
+use crate::parser::Parser;
 
 /// In-memory store of every open document's full text, keyed by URI.
 /// Kept trivially simple: whole-file sync, no incremental edits.
@@ -52,6 +59,13 @@ pub fn run_lsp_server() -> Result<(), Box<dyn Error + Sync + Send>> {
             ..Default::default()
         }),
         definition_provider: Some(OneOf::Left(false)),
+        diagnostic_provider: Some(lsp_types::DiagnosticServerCapabilities::Options(
+            DiagnosticOptions {
+                inter_file_dependencies: true,
+                workspace_diagnostics: false,
+                ..Default::default()
+            },
+        )),
         ..Default::default()
     };
     let server_capabilities = serde_json::to_value(&capabilities)?;
@@ -105,6 +119,18 @@ fn handle_request(
     let req = match cast_req::<Completion>(req) {
         Ok((id, params)) => {
             let resp = completion(docs, params);
+            connection
+                .sender
+                .send(Message::Response(Response::new_ok(id, resp)))?;
+            return Ok(());
+        }
+        Err(ExtractError::MethodMismatch(req)) => req,
+        Err(ExtractError::JsonError { .. }) => return Ok(()),
+    };
+
+    let req = match cast_req::<DocumentDiagnosticRequest>(req) {
+        Ok((id, params)) => {
+            let resp = diagnostic(docs, params);
             connection
                 .sender
                 .send(Message::Response(Response::new_ok(id, resp)))?;
@@ -174,6 +200,52 @@ fn completion(_docs: &Docs, _params: CompletionParams) -> CompletionResponse {
             ..Default::default()
         },
     ])
+}
+
+fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentDiagnosticReport> {
+    let uri = params.text_document.uri;
+    let code = docs.0.get(&uri)?;
+
+    let mut lexer = Lexer::new(code);
+    let tokens = lexer.tokenize();
+
+    let mut parser = Parser::new(tokens);
+    let _program = parser.parse();
+
+    let errors: Vec<info::Error> = lexer.errors.into_iter().chain(parser.errors).collect();
+
+    // Find possible errors in the .myst file
+    DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+        full_document_diagnostic_report: FullDocumentDiagnosticReport {
+            items: errors
+                .iter()
+                .flat_map(|err| error_diagnostic(err))
+                .collect(),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
+fn error_diagnostic(err: &info::Error) -> Option<Diagnostic> {
+    let info::Info { line, from, to } = err.info()?;
+    Diagnostic {
+        range: Range {
+            start: Position {
+                line: *line,
+                character: *from,
+            },
+            end: Position {
+                line: *line,
+                character: *to,
+            },
+        },
+        severity: Some(DiagnosticSeverity::ERROR),
+        message: err.message(),
+        ..Default::default()
+    }
+    .into()
 }
 
 fn cast_req<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
