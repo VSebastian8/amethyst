@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::{
     info::{Error, Info},
     token::*,
@@ -8,6 +10,7 @@ pub struct Lexer {
     pub errors: Vec<Error>,
     line: u32,
     column: u32,
+    description: String,
 }
 
 impl Lexer {
@@ -19,6 +22,7 @@ impl Lexer {
             errors: Vec::new(),
             line: 0,
             column: 0,
+            description: String::new(),
         }
     }
 
@@ -48,7 +52,10 @@ impl Lexer {
             let token = match ch {
                 '(' => Token::LParanthesis,
                 ')' => Token::RParanthesis,
-                '}' => Token::RBracket,
+                '}' => {
+                    self.description = String::new();
+                    Token::RBracket
+                }
                 '/' => Token::Slash,
                 ',' => Token::Comma,
                 ';' => Token::Semicolon,
@@ -152,23 +159,33 @@ impl Lexer {
     }
 
     fn read_line_comment(&mut self) {
+        let mut comment = String::new();
         while let Some(c) = self.advance() {
+            comment.push(c);
             if c == '\n' {
                 break;
             }
         }
+        self.description.push_str(&comment);
     }
 
     fn read_block_comment(&mut self) {
         let line = self.line;
         let to = self.column;
+        let mut comment = String::new();
         while let Some(c) = self.advance() {
             if c == '-' {
                 if let Some(c2) = self.advance() {
                     if c2 == '}' {
+                        self.description.push_str(&comment);
                         return;
+                    } else {
+                        comment.push(c);
+                        comment.push(c2);
                     }
                 }
+            } else {
+                comment.push(c);
             }
         }
         self.errors.push(Error::NotTerminated(
@@ -214,7 +231,10 @@ impl Lexer {
             "accept" => Token::Accept,
             "reject" => Token::Reject,
             "as" => Token::As,
-            _ => Token::Ident(word),
+            _ => {
+                let desc = mem::replace(&mut self.description, String::new());
+                Token::Ident(word, desc.trim().to_string())
+            }
         }
     }
 }
@@ -242,7 +262,7 @@ mod tests {
                 LBracket,
                 Accept,
                 State,
-                Ident("acceptstate".to_string()),
+                Ident("acceptstate".to_string(), "".to_string()),
                 RBracket
             ]
         );
@@ -330,7 +350,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("first".to_string()),
+                    token: Ident("first".to_string(), "This is a line comment".to_string()),
                     info: Info {
                         line: 1,
                         from: 14,
@@ -394,7 +414,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("second_state2".to_string()),
+                    token: Ident("second_state2".to_string(), "".to_string()),
                     info: Info {
                         line: 2,
                         from: 13,
@@ -474,7 +494,7 @@ mod tests {
             tokens,
             vec![
                 TokenInfo {
-                    token: Ident("stAte".to_string()),
+                    token: Ident("stAte".to_string(), "".to_string()),
                     info: Info {
                         line: 0,
                         from: 0,
@@ -482,7 +502,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("q0".to_string()),
+                    token: Ident("q0".to_string(), "".to_string()),
                     info: Info {
                         line: 1,
                         from: 1,
@@ -490,7 +510,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("ups".to_string()),
+                    token: Ident("ups".to_string(), "".to_string()),
                     info: Info {
                         line: 1,
                         from: 5,
@@ -536,6 +556,109 @@ mod tests {
                         to: 11
                     }
                 )
+            ]
+        );
+    }
+
+    #[test]
+    fn test_descriptions() {
+        let mut lexer = Lexer::new("-- This turing machine \n -- is pretty neat \n automaton add(a as b) { \n--other ignored comment\n } {- this \n state -} -- is cool \n state ups {- some\nthing - } ");
+        let tokens = lexer.tokenize();
+
+        assert_eq!(
+            tokens,
+            vec![
+                TokenInfo {
+                    token: Automaton,
+                    info: Info {
+                        line: 2,
+                        from: 1,
+                        to: 10
+                    }
+                },
+                TokenInfo {
+                    token: Ident(
+                        "add".to_string(),
+                        "This turing machine \n is pretty neat".to_string()
+                    ),
+                    info: Info {
+                        line: 2,
+                        from: 11,
+                        to: 14
+                    }
+                },
+                TokenInfo {
+                    token: LParanthesis,
+                    info: Info {
+                        line: 2,
+                        from: 14,
+                        to: 15
+                    }
+                },
+                TokenInfo {
+                    token: Ident("a".to_string(), String::new()),
+                    info: Info {
+                        line: 2,
+                        from: 15,
+                        to: 16
+                    }
+                },
+                TokenInfo {
+                    token: As,
+                    info: Info {
+                        line: 2,
+                        from: 17,
+                        to: 19
+                    }
+                },
+                TokenInfo {
+                    token: Ident("b".to_string(), String::new()),
+                    info: Info {
+                        line: 2,
+                        from: 20,
+                        to: 21
+                    }
+                },
+                TokenInfo {
+                    token: RParanthesis,
+                    info: Info {
+                        line: 2,
+                        from: 21,
+                        to: 22
+                    }
+                },
+                TokenInfo {
+                    token: LBracket,
+                    info: Info {
+                        line: 2,
+                        from: 23,
+                        to: 24
+                    }
+                },
+                TokenInfo {
+                    token: RBracket,
+                    info: Info {
+                        line: 4,
+                        from: 1,
+                        to: 2
+                    }
+                },
+                TokenInfo {
+                    token: State,
+                    info: Info {
+                        line: 6,
+                        from: 1,
+                        to: 6
+                    }
+                },
+                TokenInfo {
+                    token: Ident("ups".to_string(), "this \n state  is cool".to_string()),
+                    info: Info {
+                        line: 6,
+                        from: 7,
+                        to: 10
+                    }
+                }
             ]
         );
     }

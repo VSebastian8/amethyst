@@ -80,16 +80,17 @@ impl IR {
 
     // without transitions or rewriting component states
     fn add_shallow_state(&mut self, prefix: &String, state: &State) -> Result<(), String> {
-        match state {
-            State::Accept(name) => {
+        let name = state.name.clone();
+        match &state.typ {
+            StateType::Accept => {
                 self.accept_states
                     .insert(self.unique_state(format!("{}.{}", prefix, name))?);
             }
-            State::Reject(name) => {
+            StateType::Reject => {
                 self.reject_states
                     .insert(self.unique_state(format!("{}.{}", prefix, name))?);
             }
-            State::State(name, component, _, _) => match component {
+            StateType::State(component, _, _) => match component {
                 None => {
                     self.transition_states
                         .insert(self.unique_state(format!("{}.{}", prefix, name))?);
@@ -111,13 +112,15 @@ impl IR {
         comps_output: &HashMap<String, Vec<(String, bool)>>,
     ) -> Result<(), String> {
         // println!("Adding full state {:?}", state);
-        match state {
-            State::State(name, component, _initial, transitions) => match component {
+        let name = state.name.clone();
+        match &state.typ {
+            StateType::State(component, _initial, transitions) => match component {
                 None => transitions
                     .iter()
-                    .map(|t| self.add_transition(prefix, name, comps_input, t))
+                    .map(|t| self.add_transition(prefix, &name, comps_input, t))
                     .collect::<Result<(), String>>(),
                 Some(comp) => {
+                    // TODO: split this mess into functions
                     // Check that component exists
                     if !comps_input.contains_key(comp) {
                         return Err(format!("Could not find component {}", comp));
@@ -167,7 +170,7 @@ impl IR {
                         }
                         _ => {
                             // Only rewrite final states
-                            if comps_output[comp].iter().all(|(st, _)| st != name) {
+                            if comps_output[comp].iter().all(|(st, _)| st != &name) {
                                 return Err(
                                     "Can only rewrite final states from components".to_string()
                                 );
@@ -205,6 +208,7 @@ impl IR {
         prefix: &String,
         name: &String,
     ) -> Result<(String, Vec<(String, bool)>), String> {
+        // TODO: split this mess into functions
         if !automata.contains_key(name) {
             return Err("Automaton does not exist".to_string());
         }
@@ -245,9 +249,9 @@ impl IR {
         let final_states = automata[name]
             .states
             .iter()
-            .flat_map(|state| match state {
-                State::Accept(name) => Some((name.clone(), true)),
-                State::Reject(name) => Some((name.clone(), false)),
+            .flat_map(|state| match state.typ {
+                StateType::Accept => Some((state.name.clone(), true)),
+                StateType::Reject => Some((state.name.clone(), false)),
                 _ => None,
             })
             .collect();
@@ -256,21 +260,21 @@ impl IR {
         automata[name]
             .states
             .iter()
-            .map(|state| match state {
-                State::State(name, None, initial, _) => {
-                    if *initial {
+            .map(|state| match state.typ {
+                StateType::State(None, initial, _) => {
+                    if initial {
                         if initial_state.is_some() {
                             Err("Can't have multiple initial states".to_string())
                         } else {
-                            initial_state = Some(name.clone());
+                            initial_state = Some(state.name.clone());
                             Ok(())
                         }
                     } else {
                         Ok(())
                     }
                 }
-                State::State(_, Some(_), initial, _) => {
-                    if *initial {
+                StateType::State(Some(_), initial, _) => {
+                    if initial {
                         Err("Component state can't be initial".to_string())
                     } else {
                         Ok(())
@@ -290,22 +294,29 @@ impl IR {
 fn add_sink_states(program: &mut Vec<Automaton>) {
     program.iter_mut().for_each(|automaton| {
         let mut sink = false;
-        automaton.states.iter_mut().for_each(|state| match state {
-            State::State(_, _, _, transitions) => {
-                if !transitions.iter().any(|t| t.read == '_') {
-                    transitions.push(Transition {
-                        read: '_',
-                        write: '_',
-                        mov: Move::N,
-                        state: ("sink".to_string(), None),
-                    });
-                    sink = true;
+        automaton
+            .states
+            .iter_mut()
+            .for_each(|state| match &mut state.typ {
+                StateType::State(_, _, transitions) => {
+                    if !transitions.iter().any(|t| t.read == '_') {
+                        transitions.push(Transition {
+                            read: '_',
+                            write: '_',
+                            mov: Move::N,
+                            state: ("sink".to_string(), None),
+                        });
+                        sink = true;
+                    }
                 }
-            }
-            _ => {}
-        });
+                _ => {}
+            });
         if sink {
-            automaton.states.push(State::Reject("sink".to_string()));
+            automaton.states.push(State {
+                name: "sink".to_string(),
+                typ: StateType::Reject,
+                desc: "generated sink state".to_string(),
+            });
         }
     });
 }
@@ -338,28 +349,40 @@ mod tests {
             name: "main".to_string(),
             components: Vec::new(),
             states: vec![
-                State::State(
-                    "first".to_string(),
-                    None,
-                    true,
-                    vec![
-                        Transition {
-                            read: '0',
-                            write: 'A',
-                            mov: Move::L,
-                            state: ("good".to_string(), None),
-                        },
-                        Transition {
-                            read: '_',
-                            write: 'B',
-                            mov: Move::R,
-                            state: ("bad".to_string(), None),
-                        },
-                    ],
-                ),
-                State::Accept("good".to_string()),
-                State::Reject("bad".to_string()),
+                State {
+                    name: "first".to_string(),
+                    typ: StateType::State(
+                        None,
+                        true,
+                        vec![
+                            Transition {
+                                read: '0',
+                                write: 'A',
+                                mov: Move::L,
+                                state: ("good".to_string(), None),
+                            },
+                            Transition {
+                                read: '_',
+                                write: 'B',
+                                mov: Move::R,
+                                state: ("bad".to_string(), None),
+                            },
+                        ],
+                    ),
+                    desc: String::new(),
+                },
+                State {
+                    name: "good".to_string(),
+                    typ: StateType::Accept,
+                    desc: "accepting state".to_string(),
+                },
+                State {
+                    name: "bad".to_string(),
+                    typ: StateType::Reject,
+                    desc: "rejecting state".to_string(),
+                },
             ],
+            desc: String::new(),
         }];
         let result = remove_components(program).unwrap();
         assert_eq!(result.len(), 1);
@@ -390,65 +413,88 @@ mod tests {
                 name: "move".to_string(),
                 components: Vec::new(),
                 states: vec![
-                    State::State(
-                        "q0".to_string(),
-                        None,
-                        true,
-                        vec![Transition {
-                            read: '_',
-                            write: '_',
-                            mov: Move::R,
-                            state: ("q1".to_string(), None),
-                        }],
-                    ),
-                    State::Accept("q1".to_string()),
+                    State {
+                        name: "q0".to_string(),
+                        typ: StateType::State(
+                            None,
+                            true,
+                            vec![Transition {
+                                read: '_',
+                                write: '_',
+                                mov: Move::R,
+                                state: ("q1".to_string(), None),
+                            }],
+                        ),
+                        desc: "simple state".to_string(),
+                    },
+                    State {
+                        name: "q1".to_string(),
+                        typ: StateType::Accept,
+                        desc: "final state".to_string(),
+                    },
                 ],
+                desc: "move\none\ncell".to_string(),
             },
             Automaton {
                 name: "add".to_string(),
                 components: vec![("move".to_string(), "m".to_string())],
                 states: vec![
-                    State::State(
-                        "first".to_string(),
-                        None,
-                        true,
-                        vec![
-                            Transition {
-                                read: '1',
-                                write: '0',
-                                mov: Move::N,
-                                state: ("q0".to_string(), Some("m".to_string())),
-                            },
-                            Transition {
-                                read: '0',
-                                write: '1',
-                                mov: Move::N,
-                                state: ("input".to_string(), Some("m".to_string())),
-                            },
-                        ],
-                    ),
-                    State::State(
-                        "q1".to_string(),
-                        Some("m".to_string()),
-                        false,
-                        vec![
-                            Transition {
-                                read: 'A',
-                                write: '_',
-                                mov: Move::N,
-                                state: ("done".to_string(), None),
-                            },
-                            Transition {
-                                read: '_',
-                                write: 'B',
-                                mov: Move::N,
-                                state: ("ups".to_string(), None),
-                            },
-                        ],
-                    ),
-                    State::Accept("done".to_string()),
-                    State::Reject("ups".to_string()),
+                    State {
+                        name: "first".to_string(),
+                        typ: StateType::State(
+                            None,
+                            true,
+                            vec![
+                                Transition {
+                                    read: '1',
+                                    write: '0',
+                                    mov: Move::N,
+                                    state: ("q0".to_string(), Some("m".to_string())),
+                                },
+                                Transition {
+                                    read: '0',
+                                    write: '1',
+                                    mov: Move::N,
+                                    state: ("input".to_string(), Some("m".to_string())),
+                                },
+                            ],
+                        ),
+                        desc: String::new(),
+                    },
+                    State {
+                        name: "q1".to_string(),
+                        typ: StateType::State(
+                            Some("m".to_string()),
+                            false,
+                            vec![
+                                Transition {
+                                    read: 'A',
+                                    write: '_',
+                                    mov: Move::N,
+                                    state: ("done".to_string(), None),
+                                },
+                                Transition {
+                                    read: '_',
+                                    write: 'B',
+                                    mov: Move::N,
+                                    state: ("ups".to_string(), None),
+                                },
+                            ],
+                        ),
+                        desc: String::new(),
+                    },
+                    State {
+                        name: "done".to_string(),
+                        typ: StateType::Accept,
+                        desc: String::new(),
+                    },
+                    State {
+                        name: "ups".to_string(),
+                        typ: StateType::Reject,
+                        desc: "upsie".to_string(),
+                    },
                 ],
+                desc: "some complicated machine".to_string(),
             },
             Automaton {
                 name: "main".to_string(),
@@ -457,61 +503,82 @@ mod tests {
                     ("add".to_string(), "a2".to_string()),
                 ],
                 states: vec![
-                    State::State(
-                        "first".to_string(),
-                        None,
-                        true,
-                        vec![
-                            Transition {
-                                read: '&',
-                                write: '@',
-                                mov: Move::L,
-                                state: ("input".to_string(), Some("a1".to_string())),
-                            },
-                            Transition {
+                    State {
+                        name: "first".to_string(),
+                        typ: StateType::State(
+                            None,
+                            true,
+                            vec![
+                                Transition {
+                                    read: '&',
+                                    write: '@',
+                                    mov: Move::L,
+                                    state: ("input".to_string(), Some("a1".to_string())),
+                                },
+                                Transition {
+                                    read: '_',
+                                    write: '2',
+                                    mov: Move::N,
+                                    state: ("first".to_string(), Some("a2".to_string())),
+                                },
+                            ],
+                        ),
+                        desc: "this state is pretty cool huh".to_string(),
+                    },
+                    State {
+                        name: "output".to_string(),
+                        typ: StateType::State(
+                            Some("a1".to_string()),
+                            false,
+                            vec![Transition {
                                 read: '_',
-                                write: '2',
+                                write: '_',
                                 mov: Move::N,
-                                state: ("first".to_string(), Some("a2".to_string())),
-                            },
-                        ],
-                    ),
-                    State::State(
-                        "output".to_string(),
-                        Some("a1".to_string()),
-                        false,
-                        vec![Transition {
-                            read: '_',
-                            write: '_',
-                            mov: Move::N,
-                            state: ("finally".to_string(), None),
-                        }],
-                    ),
-                    State::State(
-                        "accept".to_string(),
-                        Some("a2".to_string()),
-                        false,
-                        vec![Transition {
-                            read: '_',
-                            write: '_',
-                            mov: Move::N,
-                            state: ("finally".to_string(), None),
-                        }],
-                    ),
-                    State::State(
-                        "reject".to_string(),
-                        Some("a2".to_string()),
-                        false,
-                        vec![Transition {
-                            read: '_',
-                            write: '_',
-                            mov: Move::N,
-                            state: ("double_ups".to_string(), None),
-                        }],
-                    ),
-                    State::Accept("finally".to_string()),
-                    State::Reject("double_ups".to_string()),
+                                state: ("finally".to_string(), None),
+                            }],
+                        ),
+                        desc: String::new(),
+                    },
+                    State {
+                        name: "accept".to_string(),
+                        typ: StateType::State(
+                            Some("a2".to_string()),
+                            false,
+                            vec![Transition {
+                                read: '_',
+                                write: '_',
+                                mov: Move::N,
+                                state: ("finally".to_string(), None),
+                            }],
+                        ),
+                        desc: "all accepting state of component a2".to_string(),
+                    },
+                    State {
+                        name: "reject".to_string(),
+                        typ: StateType::State(
+                            Some("a2".to_string()),
+                            false,
+                            vec![Transition {
+                                read: '_',
+                                write: '_',
+                                mov: Move::N,
+                                state: ("double_ups".to_string(), None),
+                            }],
+                        ),
+                        desc: String::new(),
+                    },
+                    State {
+                        name: "finally".to_string(),
+                        typ: StateType::Accept,
+                        desc: String::new(),
+                    },
+                    State {
+                        name: "double_ups".to_string(),
+                        typ: StateType::Reject,
+                        desc: "you really messed up".to_string(),
+                    },
                 ],
+                desc: "turing machines are cool".to_string(),
             },
         ];
         let result = remove_components(program).unwrap();

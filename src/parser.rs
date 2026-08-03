@@ -142,15 +142,15 @@ impl Parser {
         }
     }
 
-    fn parse_ident(&mut self, line: u32) -> Result<String, Error> {
+    fn parse_ident(&mut self, line: u32) -> Result<(String, String), Error> {
         match self.peek() {
             Some(token) if token.info.line != line => Err(Error::Missing(
                 "identifier".to_string(),
                 self.lines[line as usize].clone(),
             )),
             Some(token) => match &token.token {
-                Token::Ident(name) => {
-                    let res = Ok(name.clone());
+                Token::Ident(name, description) => {
+                    let res = Ok((name.clone(), description.clone()));
                     self.advance();
                     res
                 }
@@ -160,14 +160,14 @@ impl Parser {
         }
     }
 
-    fn parse_state_name(&mut self, line: u32) -> Result<(String, Option<String>), Error> {
-        let name = self.parse_ident(line)?;
+    fn parse_state_name(&mut self, line: u32) -> Result<(String, Option<String>, String), Error> {
+        let (name, desc) = self.parse_ident(line)?;
         match self.peek() {
             Some(token) if token.token == Token::Dot && token.info.line == line => {
                 self.advance();
-                Ok((self.parse_ident(line)?, Some(name)))
+                Ok((self.parse_ident(line)?.0, Some(name), desc))
             }
-            _ => Ok((name, None)),
+            _ => Ok((name, None, desc)),
         }
     }
 
@@ -179,13 +179,13 @@ impl Parser {
         self.expect_on_line(&Token::Comma, line)?;
         let mov = self.parse_move(line)?;
         self.expect_on_line(&Token::Arrow, line)?;
-        let state = self.parse_state_name(line)?;
+        let (state, parent, _) = self.parse_state_name(line)?;
         self.expect_on_line(&Token::Semicolon, line)?;
         Ok(Transition {
             read,
             write,
             mov,
-            state,
+            state: (state, parent),
         })
     }
 
@@ -243,12 +243,20 @@ impl Parser {
         let line = self.get_line();
         self.advance();
         self.expect_on_line(&Token::State, line)?;
-        let state = self.parse_ident(line)?;
+        let (state, desc) = self.parse_ident(line)?;
         self.expect_on_line(&Token::Semicolon, line)?;
         if acc {
-            Ok(State::Accept(state))
+            Ok(State {
+                name: state,
+                typ: StateType::Accept,
+                desc,
+            })
         } else {
-            Ok(State::Reject(state))
+            Ok(State {
+                name: state,
+                typ: StateType::Reject,
+                desc,
+            })
         }
     }
 
@@ -262,19 +270,19 @@ impl Parser {
             _ => false,
         };
         self.expect_on_line(&Token::State, line)?;
-        let (state, parent) = self.parse_state_name(line)?;
+        let (state, parent, desc) = self.parse_state_name(line)?;
         let mut transitions = Vec::new();
         match self.peek() {
             Some(token) => match token.token {
                 Token::Arrow => {
                     self.advance();
-                    let new_state = self.parse_state_name(line)?;
+                    let (new_state, new_parent, _) = self.parse_state_name(line)?;
                     self.expect(&Token::Semicolon)?;
                     transitions.push(Transition {
                         read: '_',
                         write: '_',
                         mov: Move::N,
-                        state: new_state,
+                        state: (new_state, new_parent),
                     });
                 }
                 Token::LBracket => {
@@ -287,7 +295,11 @@ impl Parser {
             None => return Err(Error::EOF("`{` or `->`".to_string())),
         }
 
-        Ok(State::State(state, parent, init, transitions))
+        Ok(State {
+            name: state,
+            typ: StateType::State(parent, init, transitions),
+            desc,
+        })
     }
 
     // Panic mode error recovery for state
@@ -384,9 +396,9 @@ impl Parser {
 
     fn parse_component(&mut self) -> Result<(String, String), Error> {
         let line = self.get_line();
-        let path = self.parse_ident(line)?;
+        let path = self.parse_ident(line)?.0;
         self.expect_on_line(&Token::As, line)?;
-        let name = self.parse_ident(line)?;
+        let name = self.parse_ident(line)?.0;
         Ok((path, name))
     }
 
@@ -453,12 +465,12 @@ impl Parser {
     pub fn parse_automaton(&mut self) -> Option<Automaton> {
         let line = self.get_line();
 
-        let name = match self.expect(&Token::Automaton).and(self.parse_ident(line)) {
+        let (name, desc) = match self.expect(&Token::Automaton).and(self.parse_ident(line)) {
             Err(err) => {
                 self.errors.push(err);
-                None
+                (None, String::new())
             }
-            Ok(name) => Some(name),
+            Ok((name, desc)) => (Some(name), desc),
         };
         let parse_comp = match self.expect(&Token::LParanthesis) {
             Ok(()) => true,
@@ -529,6 +541,7 @@ impl Parser {
             name: name?,
             components,
             states,
+            desc,
         })
     }
 
@@ -574,7 +587,7 @@ mod tests {
             Comma,
             Symbol('L'),
             Arrow,
-            Ident("s2".to_string()),
+            Ident("s2".to_string(), "".to_string()),
             Semicolon,
         ]);
         let mut parser = Parser::new(tokens);
@@ -596,7 +609,7 @@ mod tests {
         let tokens = vec![
             Initial,
             State,
-            Ident("first".to_string()),
+            Ident("first".to_string(), "this is the initial state".to_string()),
             LBracket,
             Symbol('_'),
             Slash,
@@ -604,9 +617,9 @@ mod tests {
             Comma,
             Symbol('R'),
             Arrow,
-            Ident("add".to_string()),
+            Ident("add".to_string(), "".to_string()),
             Dot,
-            Ident("input".to_string()),
+            Ident("input".to_string(), "".to_string()),
             Semicolon,
             RBracket,
         ];
@@ -615,17 +628,20 @@ mod tests {
 
         assert_eq!(
             s,
-            State::State(
-                "first".to_string(),
-                None,
-                true,
-                vec![Transition {
-                    read: '_',
-                    write: '@',
-                    mov: Move::R,
-                    state: ("input".to_string(), Some("add".to_string()))
-                }]
-            )
+            State {
+                name: "first".to_string(),
+                typ: StateType::State(
+                    None,
+                    true,
+                    vec![Transition {
+                        read: '_',
+                        write: '@',
+                        mov: Move::R,
+                        state: ("input".to_string(), Some("add".to_string()))
+                    }]
+                ),
+                desc: "this is the initial state".to_string()
+            }
         );
     }
 
@@ -633,13 +649,13 @@ mod tests {
     fn test_arrow_state() {
         let tokens = default_info(vec![
             State,
-            Ident("x".to_string()),
+            Ident("x".to_string(), "could be y".to_string()),
             Dot,
-            Ident("some_name".to_string()),
+            Ident("some_name".to_string(), String::new()),
             Arrow,
-            Ident("y12".to_string()),
+            Ident("y12".to_string(), String::new()),
             Dot,
-            Ident("some_name2".to_string()),
+            Ident("some_name2".to_string(), String::new()),
             Semicolon,
         ]);
         let mut parser = Parser::new(tokens);
@@ -647,53 +663,80 @@ mod tests {
 
         assert_eq!(
             s,
-            State::State(
-                "some_name".to_string(),
-                Some("x".to_string()),
-                false,
-                vec![Transition {
-                    read: '_',
-                    write: '_',
-                    mov: Move::N,
-                    state: ("some_name2".to_string(), Some("y12".to_string()))
-                }]
-            )
+            State {
+                name: "some_name".to_string(),
+                typ: StateType::State(
+                    Some("x".to_string()),
+                    false,
+                    vec![Transition {
+                        read: '_',
+                        write: '_',
+                        mov: Move::N,
+                        state: ("some_name2".to_string(), Some("y12".to_string()))
+                    }]
+                ),
+                desc: "could be y".to_string()
+            }
         );
     }
 
     #[test]
     fn test_final_states() {
-        let tokens = vec![Accept, State, Ident("done".to_string()), Semicolon];
+        let tokens = vec![
+            Accept,
+            State,
+            Ident("done".to_string(), "final state".to_string()),
+            Semicolon,
+        ];
         let mut parser = Parser::new(default_info(tokens));
         let s = parser.parse_state_recover().unwrap();
 
-        assert_eq!(s, State::Accept("done".to_string()));
+        assert_eq!(
+            s,
+            State {
+                name: "done".to_string(),
+                typ: StateType::Accept,
+                desc: "final state".to_string()
+            }
+        );
 
-        let tokens = vec![Reject, State, Ident("over".to_string()), Semicolon];
+        let tokens = vec![
+            Reject,
+            State,
+            Ident("over".to_string(), String::new()),
+            Semicolon,
+        ];
         let mut parser = Parser::new(default_info(tokens));
         let s = parser.parse_state_recover().unwrap();
 
-        assert_eq!(s, State::Reject("over".to_string()));
+        assert_eq!(
+            s,
+            State {
+                name: "over".to_string(),
+                typ: StateType::Reject,
+                desc: String::new()
+            }
+        );
     }
 
     #[test]
     fn test_automaton() {
         let tokens = vec![
             Automaton,
-            Ident("main".to_string()),
+            Ident("main".to_string(), "entry\npoint".to_string()),
             LParanthesis,
-            Ident("add".to_string()),
+            Ident("add".to_string(), String::new()),
             As,
-            Ident("a1".to_string()),
+            Ident("a1".to_string(), String::new()),
             Comma,
-            Ident("other_auto".to_string()),
+            Ident("other_auto".to_string(), String::new()),
             As,
-            Ident("unused".to_string()),
+            Ident("unused".to_string(), String::new()),
             RParanthesis,
             LBracket,
             Initial,
             State,
-            Ident("start".to_string()),
+            Ident("start".to_string(), "first state".to_string()),
             LBracket,
             Symbol('_'),
             Slash,
@@ -701,21 +744,24 @@ mod tests {
             Comma,
             Symbol('N'),
             Arrow,
-            Ident("a1".to_string()),
+            Ident("a1".to_string(), String::new()),
             Dot,
-            Ident("input".to_string()),
+            Ident("input".to_string(), String::new()),
             Semicolon,
             RBracket,
             State,
-            Ident("a1".to_string()),
+            Ident(
+                "a1".to_string(),
+                "final state \n of a \n component".to_string(),
+            ),
             Dot,
-            Ident("output".to_string()),
+            Ident("output".to_string(), String::new()),
             Arrow,
-            Ident("done".to_string()),
+            Ident("done".to_string(), String::new()),
             Semicolon,
             Accept,
             State,
-            Ident("done".to_string()),
+            Ident("done".to_string(), String::new()),
             Semicolon,
             RBracket,
         ];
@@ -731,30 +777,41 @@ mod tests {
                     ("other_auto".to_string(), "unused".to_string())
                 ],
                 states: vec![
-                    State::State(
-                        "start".to_string(),
-                        None,
-                        true,
-                        vec![Transition {
-                            read: '_',
-                            write: '0',
-                            mov: Move::N,
-                            state: ("input".to_string(), Some("a1".to_string()))
-                        }]
-                    ),
-                    State::State(
-                        "output".to_string(),
-                        Some("a1".to_string()),
-                        false,
-                        vec![Transition {
-                            read: '_',
-                            write: '_',
-                            mov: Move::N,
-                            state: ("done".to_string(), None)
-                        }]
-                    ),
-                    State::Accept("done".to_string())
-                ]
+                    State {
+                        name: "start".to_string(),
+                        typ: StateType::State(
+                            None,
+                            true,
+                            vec![Transition {
+                                read: '_',
+                                write: '0',
+                                mov: Move::N,
+                                state: ("input".to_string(), Some("a1".to_string()))
+                            }]
+                        ),
+                        desc: "first state".to_string()
+                    },
+                    State {
+                        name: "output".to_string(),
+                        typ: StateType::State(
+                            Some("a1".to_string()),
+                            false,
+                            vec![Transition {
+                                read: '_',
+                                write: '_',
+                                mov: Move::N,
+                                state: ("done".to_string(), None)
+                            }]
+                        ),
+                        desc: "final state \n of a \n component".to_string()
+                    },
+                    State {
+                        name: "done".to_string(),
+                        typ: StateType::Accept,
+                        desc: String::new()
+                    }
+                ],
+                desc: "entry\npoint".to_string()
             }
         );
     }
@@ -764,11 +821,11 @@ mod tests {
         let tokens = default_info(vec![
             Symbol('A'),
             Slash,
-            Ident("bye".to_string()),
+            Ident("bye".to_string(), "".to_string()),
             Comma,
             Symbol('L'),
             Arrow,
-            Ident("s2".to_string()),
+            Ident("s2".to_string(), "".to_string()),
             Semicolon,
         ]);
         let mut parser = Parser::new(tokens);
@@ -779,16 +836,20 @@ mod tests {
 
     #[test]
     fn test_parse_state_error() {
-        let tokens = default_info(vec![State, Ident("some".to_string()), LBracket]);
+        let tokens = default_info(vec![
+            State,
+            Ident("some".to_string(), "".to_string()),
+            LBracket,
+        ]);
         let mut parser = Parser::new(tokens);
         parser.parse_state_recover();
         assert_eq!(parser.errors, vec![Error::EOF("`}`".to_string())]);
 
         let tokens = default_info(vec![
             State,
-            Ident("some".to_string()),
+            Ident("some".to_string(), "".to_string()),
             Arrow,
-            Ident("other".to_string()),
+            Ident("other".to_string(), "".to_string()),
         ]);
         let mut parser = Parser::new(tokens);
         parser.parse_state_recover();
@@ -815,7 +876,7 @@ mod tests {
                 },
             },
             TokenInfo {
-                token: Ident("whatever".to_string()),
+                token: Ident("whatever".to_string(), "".to_string()),
                 info: Info {
                     line: 3,
                     from: 0,
@@ -863,14 +924,14 @@ mod tests {
     fn test_error_components() {
         let tokens = default_info(vec![
             Automaton,
-            Ident("ok".to_string()),
+            Ident("ok".to_string(), "".to_string()),
             LParanthesis,
-            Ident("place".to_string()),
-            Ident("xor".to_string()),
+            Ident("place".to_string(), "".to_string()),
+            Ident("xor".to_string(), "".to_string()),
             Comma,
-            Ident("good".to_string()),
+            Ident("good".to_string(), "".to_string()),
             As,
-            Ident("dea?d".to_string()),
+            Ident("dea?d".to_string(), "".to_string()),
             Comma,
             RParanthesis,
             LBracket,
@@ -884,7 +945,7 @@ mod tests {
             vec![
                 Error::Unexpected(
                     TokenInfo {
-                        token: Ident("xor".to_string()),
+                        token: Ident("xor".to_string(), "".to_string()),
                         info: Info {
                             line: 0,
                             from: 0,

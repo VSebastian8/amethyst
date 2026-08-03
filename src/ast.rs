@@ -14,10 +14,17 @@ pub struct Transition {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum State {
-    Accept(String),
-    Reject(String),
-    State(String, Option<String>, bool, Vec<Transition>), // name, parent, initial, transitions
+pub enum StateType {
+    Accept,
+    Reject,
+    State(Option<String>, bool, Vec<Transition>), // name, parent, initial, transitions
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct State {
+    pub name: String,
+    pub typ: StateType,
+    pub desc: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,4 +32,5 @@ pub struct Automaton {
     pub name: String,
     pub components: Vec<(String, String)>,
     pub states: Vec<State>,
+    pub desc: String,
 }

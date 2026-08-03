@@ -23,7 +23,7 @@ pub enum Token {
     Arrow,
     // literals
     Symbol(char),
-    Ident(String),
+    Ident(String, String),
 }
 
 impl Token {
@@ -45,7 +45,7 @@ impl Token {
             Token::Dot => "`.`",
             Token::Arrow => "`->`",
             Token::Symbol(ch) => return format!("symbol `{}`", ch),
-            Token::Ident(x) => return format!("identifier `{}`", x),
+            Token::Ident(x, _) => return format!("identifier `{}`", x),
         }
         .to_string()
     }
