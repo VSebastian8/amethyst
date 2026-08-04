@@ -1,3 +1,5 @@
+use crate::info::Error;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Move {
     L,
@@ -33,4 +35,9 @@ pub struct Automaton {
     pub components: Vec<(String, String)>,
     pub states: Vec<State>,
     pub desc: String,
+}
+
+pub struct Ast {
+    pub automata: Vec<Automaton>,
+    pub errors: Vec<Error>,
 }

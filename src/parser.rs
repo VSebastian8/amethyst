@@ -545,14 +545,17 @@ impl Parser {
         })
     }
 
-    pub fn parse(&mut self) -> Vec<Automaton> {
+    pub fn parse(mut self) -> Ast {
         let mut automata = Vec::new();
         while self.pos < self.tokens.len() {
             if let Some(automaton) = self.parse_automaton() {
                 automata.push(automaton);
             }
         }
-        automata
+        Ast {
+            automata,
+            errors: self.errors,
+        }
     }
 }
 

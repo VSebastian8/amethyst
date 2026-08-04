@@ -6,6 +6,12 @@
   "engines": {
     "vscode": "^1.85.0"
   },
+  "publisher": "VSebastian8",
+  "repository": {
+    "type": "git",
+    "link": "https://github.com/VSebastian8/amethyst/tree/master/extensions/amethyst-lsp"
+  },
+  "icon": "icons/amethyst-logo.png",
   "categories": [
     "Programming Languages"
   ],

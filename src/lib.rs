@@ -1,4 +1,6 @@
 pub mod ast;
+pub mod cli;
+pub mod gem;
 pub mod info;
 pub mod interpreter;
 pub mod ir;

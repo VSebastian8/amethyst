@@ -1,3 +1,4 @@
+use amethyst::gem;
 use amethyst::interpreter::Interpreter;
 
 #[test]
@@ -12,7 +13,7 @@ pub fn test_simple_automaton() {
         }
         ";
     let mut interp = Interpreter::new();
-    interp.load_code(code).unwrap();
+    interp.load_program(gem::parse_ast(code)).unwrap();
     interp.run("main", "007").unwrap();
     assert_eq!("..@|1|0|7|@..", interp.tape());
 }
@@ -67,7 +68,7 @@ pub fn test_abc() {
         }
         ";
     let mut interp = Interpreter::new();
-    interp.load_code(code).unwrap();
+    interp.load_program(gem::parse_ast(code)).unwrap();
     interp.run("validator", "").unwrap();
     assert_eq!("validator.true", interp.state);
     interp.run("validator", "AABBCC").unwrap();

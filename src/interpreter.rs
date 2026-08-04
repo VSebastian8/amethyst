@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
+use crate::ast::Ast;
 use crate::ast::Move;
+use crate::gem;
 use crate::info::Error;
 use crate::ir::remove_components;
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-use std::fs;
 
 pub struct Interpreter {
     initial_states: HashMap<String, String>,
@@ -28,27 +27,18 @@ impl Interpreter {
         }
     }
 
-    pub fn load_code(&mut self, code: &str) -> Result<(), Vec<Error>> {
-        let mut lexer = Lexer::new(code);
-        let tokens = lexer.tokenize();
-        // println!(
-        //     "Tokens: {:?}",
-        //     tokens.iter().map(|t| t.token.clone()).collect::<Vec<_>>()
-        // );
+    pub fn load_program(&mut self, program: Ast) -> Result<(), Vec<Error>> {
+        let Ast { automata, errors } = program;
+        // println!("Program: {:?}", automata);
 
-        let mut parser = Parser::new(tokens);
-        let program = parser.parse();
-        // println!("Program: {:?}", program);
-
-        let errors: Vec<Error> = lexer.errors.into_iter().chain(parser.errors).collect();
         if !errors.is_empty() {
             return Err(errors);
         }
 
-        let automata = remove_components(program)
+        let program = remove_components(automata)
             .map_err(|err| Error::Other(err))
             .map_err(|e| vec![e])?;
-        for (automaton, repr) in automata {
+        for (automaton, repr) in program {
             self.initial_states.insert(automaton, repr.initial_state);
             for acc in repr.accept_states {
                 self.final_states.insert(acc, true);
@@ -62,11 +52,10 @@ impl Interpreter {
     }
 
     pub fn load(&mut self, filename: &str) -> Result<(), Vec<Error>> {
-        let code = fs::read_to_string(filename)
-            .map_err(|e| Error::Other(e.to_string()))
-            .map_err(|e| vec![e])?;
-        self.load_code(code.as_str())?;
-        Ok(())
+        match gem::load_ast(filename) {
+            Ok(program) => self.load_program(program),
+            Err(err) => Err(vec![Error::Other(err.to_string())]),
+        }
     }
 
     pub fn step(&mut self) {
@@ -157,4 +146,6 @@ impl Interpreter {
             .keys()
             .for_each(|automaton| println!("- {}", automaton));
     }
+
+    pub fn describe() {}
 }

@@ -14,9 +14,8 @@ use lsp_types::{
     TextDocumentSyncKind, Url,
 };
 
-use crate::info;
-use crate::lexer::Lexer;
-use crate::parser::Parser;
+use crate::gem;
+use crate::{ast::Ast, info};
 
 /// In-memory store of every open document's full text, keyed by URI.
 /// Kept trivially simple: whole-file sync, no incremental edits.
@@ -205,14 +204,7 @@ fn completion(_docs: &Docs, _params: CompletionParams) -> CompletionResponse {
 fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentDiagnosticReport> {
     let uri = params.text_document.uri;
     let code = docs.0.get(&uri)?;
-
-    let mut lexer = Lexer::new(code);
-    let tokens = lexer.tokenize();
-
-    let mut parser = Parser::new(tokens);
-    let _program = parser.parse();
-
-    let errors: Vec<info::Error> = lexer.errors.into_iter().chain(parser.errors).collect();
+    let Ast { errors, .. } = gem::parse_ast(code);
 
     // Find possible errors in the .myst file
     DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {

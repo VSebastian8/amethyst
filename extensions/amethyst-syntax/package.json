@@ -9,7 +9,7 @@
   "publisher": "VSebastian8",
   "repository": {
     "type": "git",
-    "link": "https://github.com/VSebastian8/amethyst/tree/master/extensions/amethyst"
+    "link": "https://github.com/VSebastian8/amethyst/tree/master/extensions/amethyst-syntax"
   },
   "icon": "icons/amethyst-logo.png",
   "categories": [
