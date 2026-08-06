@@ -28,26 +28,21 @@ impl Interpreter {
     }
 
     pub fn load_program(&mut self, program: Ast) -> Result<(), Vec<Error>> {
-        let Ast { automata, errors } = program;
-        // println!("Program: {:?}", automata);
-
+        let Ast {
+            automata,
+            mut errors,
+        } = program;
+        let mut ir = remove_components(automata);
+        errors.append(&mut ir.errors);
         if !errors.is_empty() {
             return Err(errors);
         }
-
-        let program = remove_components(automata)
-            .map_err(|err| Error::Other(err))
-            .map_err(|e| vec![e])?;
-        for (automaton, repr) in program {
-            self.initial_states.insert(automaton, repr.initial_state);
-            for acc in repr.accept_states {
-                self.final_states.insert(acc, true);
-            }
-            for acc in repr.reject_states {
-                self.final_states.insert(acc, false);
-            }
-            self.transitions.extend(repr.transitions);
-        }
+        self.initial_states.extend(ir.initial_states);
+        self.final_states
+            .extend(ir.accept_states.iter().map(|s| (s.to_string(), true)));
+        self.final_states
+            .extend(ir.reject_states.iter().map(|s| (s.to_string(), false)));
+        self.transitions.extend(ir.transitions);
         Ok(())
     }
 
@@ -103,8 +98,13 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn run(&mut self, automaton: &str, input: &str) -> Result<(), String> {
-        self.set_start(automaton)?;
+    pub fn run(&mut self, start: &str, input: &str) -> Result<(), String> {
+        let automaton = if start == "main" && !self.initial_states.contains_key("main") {
+            self.initial_states.keys().next().unwrap().clone()
+        } else {
+            start.to_string()
+        };
+        self.set_start(&automaton)?;
         self.set_input(input)?;
         println!("Running automaton {} on {}", automaton, self.tape());
         loop {

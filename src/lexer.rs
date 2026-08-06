@@ -102,7 +102,8 @@ impl Lexer {
                             }
                             _ => {
                                 self.errors.push(Error::Unknown(
-                                    '-',
+                                    "character".to_string(),
+                                    "`-`".to_string(),
                                     Info {
                                         line,
                                         from,
@@ -114,7 +115,8 @@ impl Lexer {
                         }
                     } else {
                         self.errors.push(Error::Unknown(
-                            '-',
+                            "character".to_string(),
+                            format!("`{}`", ch),
                             Info {
                                 line,
                                 from,
@@ -132,7 +134,8 @@ impl Lexer {
                 _ => {
                     self.advance();
                     self.errors.push(Error::Unknown(
-                        ch,
+                        "character".to_string(),
+                        format!("`{}`", ch),
                         Info {
                             line,
                             from,
@@ -457,7 +460,8 @@ mod tests {
         assert_eq!(
             lexer.errors,
             vec![Error::Unknown(
-                '?',
+                "character".to_string(),
+                "`?`".to_string(),
                 Info {
                     line: 0,
                     from: 10,
@@ -532,7 +536,8 @@ mod tests {
                     }
                 ),
                 Error::Unknown(
-                    '#',
+                    "character".to_string(),
+                    "`#`".to_string(),
                     Info {
                         line: 1,
                         from: 0,
@@ -540,7 +545,8 @@ mod tests {
                     }
                 ),
                 Error::Unknown(
-                    '-',
+                    "character".to_string(),
+                    "`-`".to_string(),
                     Info {
                         line: 1,
                         from: 4,

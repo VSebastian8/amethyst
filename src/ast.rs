@@ -1,10 +1,17 @@
 use crate::info::Error;
+use crate::info::Info;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Move {
     L,
     R,
     N,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StringInfo {
+    pub name: String,
+    pub info: Info,
 }
 
 #[derive(Debug, Clone, PartialEq)]

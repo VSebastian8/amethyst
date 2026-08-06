@@ -11,19 +11,22 @@ pub struct Info {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
-    Unknown(char, Info),
+    Unknown(String, String, Info),
     NotTerminated(String, String, Info),
     MalformedIdentifier(String, Info),
     EOF(String),
     Unexpected(TokenInfo, String),
     Missing(String, Info),
+    Defined(String, String, Info),
+    NotAllowed(String, Info),
+    Cycle(String, String, Info),
     Other(String),
 }
 
 impl Error {
     pub fn message(&self) -> String {
         match self {
-            Error::Unknown(ch, _) => format!("Unknown character {}", ch),
+            Error::Unknown(typ, found, _) => format!("Unknown {} {}", typ, found),
             Error::NotTerminated(start, end, _) => {
                 format!("Not terminated {}, maybe add {}", start, end)
             }
@@ -33,12 +36,15 @@ impl Error {
             Error::Unexpected(token, str) => format!("Expected {}, found {}", str, token.token),
             Error::EOF(msg) => format!("Reached EndOfFile, expected {}", msg),
             Error::Missing(expected, _) => format!("Missing {}", expected),
+            Error::Defined(typ, name, _) => format!("{} {} defined already", typ, name),
+            Error::NotAllowed(reason, _) => format!("{} is not allowed", reason),
+            Error::Cycle(typ, name, _) => format!("Found {} cycle in {}", typ, name), // TODO: better cycle message (trace)
             Error::Other(msg) => msg.to_string(),
         }
     }
     pub fn info(&self) -> Option<&Info> {
         match self {
-            Error::Unknown(_, info) => Some(info),
+            Error::Unknown(_, _, info) => Some(info),
             Error::NotTerminated(_, _, info) => Some(info),
             Error::MalformedIdentifier(_, info) => Some(info),
             Error::Unexpected(tok, _) => Some(&tok.info),
