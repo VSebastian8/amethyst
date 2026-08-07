@@ -1,11 +1,27 @@
 use crate::token::TokenInfo;
 use std::fmt::Display;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Info {
     pub line: u32,
     pub from: u32,
     pub to: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StringInfo {
+    pub name: String,
+    pub info: Info,
+}
+
+impl StringInfo {
+    // Used for terser tests
+    pub fn from(name: &str) -> Self {
+        StringInfo {
+            name: name.to_string(),
+            info: Info::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

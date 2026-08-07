@@ -38,7 +38,6 @@ automaton validator() {
         Y / B, L -> clean;
         Z / C, L -> clean;
         @ / @, R -> true;
-
     }
     accept state true;
     reject state false;

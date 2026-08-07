@@ -14,8 +14,11 @@ use lsp_types::{
     TextDocumentSyncKind, Url,
 };
 
-use crate::gem;
 use crate::{ast::Ast, info};
+use crate::{
+    fair::{flatten_automata, FAIR},
+    gem,
+};
 
 /// In-memory store of every open document's full text, keyed by URI.
 /// Kept trivially simple: whole-file sync, no incremental edits.
@@ -204,7 +207,15 @@ fn completion(_docs: &Docs, _params: CompletionParams) -> CompletionResponse {
 fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentDiagnosticReport> {
     let uri = params.text_document.uri;
     let code = docs.0.get(&uri)?;
-    let Ast { errors, .. } = gem::parse_ast(code);
+    let Ast {
+        errors: syntax_errors,
+        automata,
+    } = gem::parse_ast(code);
+    let FAIR {
+        errors: logic_errors,
+        ..
+    } = flatten_automata(automata);
+    let errors: Vec<_> = syntax_errors.iter().chain(logic_errors.iter()).collect();
 
     // Find possible errors in the .myst file
     DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {

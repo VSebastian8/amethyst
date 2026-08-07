@@ -1,10 +1,10 @@
-use crate::info::Error;
-use crate::{ast::*, info::Info};
+use crate::ast::*;
+use crate::info::*;
 use std::collections::{HashMap, HashSet};
 
-// Component Removal IR
+// Flattened Automata Intermediate Representation (component desugaring)
 #[derive(Debug, Clone)]
-pub struct IR {
+pub struct FAIR {
     pub initial_states: HashMap<String, String>,
     pub transition_states: HashSet<String>,
     pub accept_states: HashSet<String>,
@@ -13,9 +13,9 @@ pub struct IR {
     pub errors: Vec<Error>,
 }
 
-impl IR {
+impl FAIR {
     pub fn new() -> Self {
-        IR {
+        FAIR {
             initial_states: HashMap::new(),
             transition_states: HashSet::new(),
             accept_states: HashSet::new(),
@@ -33,8 +33,12 @@ impl IR {
         comps_input: &HashMap<String, String>,
         t: &Transition,
     ) {
-        let state = match &t.state {
-            (name, Some(comp)) => {
+        let StringInfo { name, info } = &t.state.0;
+        let state = match &t.state.1 {
+            Some(StringInfo {
+                name: comp,
+                info: cinfo,
+            }) => {
                 format!(
                     "{}.{}.{}",
                     prefix,
@@ -44,11 +48,7 @@ impl IR {
                             self.errors.push(Error::Unknown {
                                 typ: "component alias".to_string(),
                                 found: comp.clone(),
-                                info: Info {
-                                    line: 0,
-                                    from: 0,
-                                    to: 0,
-                                },
+                                info: cinfo.clone(),
                             });
                             return;
                         }
@@ -58,7 +58,7 @@ impl IR {
                     }
                 )
             }
-            (name, None) => format!("{}.{}", prefix, name),
+            None => format!("{}.{}", prefix, name),
         };
         // println!("Adding transition {:?} with state {:?}", t, state);
         if !self.transition_states.contains(&state)
@@ -68,11 +68,7 @@ impl IR {
             self.errors.push(Error::Unknown {
                 typ: "state".to_string(),
                 found: state,
-                info: Info {
-                    line: 0,
-                    from: 0,
-                    to: 0,
-                },
+                info: info.clone(),
             });
             return;
         }
@@ -89,19 +85,16 @@ impl IR {
     }
 
     // ensure state does not appear before
-    fn unique_state(&mut self, state: &String) {
-        if self.accept_states.contains(state)
-            || self.reject_states.contains(state)
-            || self.transition_states.contains(state)
+    fn unique_state(&mut self, prefix: &String, state: &StringInfo) {
+        let name = format!("{}.{}", prefix, state.name);
+        if self.accept_states.contains(&name)
+            || self.reject_states.contains(&name)
+            || self.transition_states.contains(&name)
         {
             self.errors.push(Error::Defined {
                 typ: "State".to_string(),
-                name: state.clone(),
-                info: Info {
-                    line: 0,
-                    from: 0,
-                    to: 0,
-                },
+                name,
+                info: state.info.clone(),
             })
         }
     }
@@ -113,9 +106,9 @@ impl IR {
             StateType::State(component, _, _) if component.is_some() => return,
             _ => {}
         }
-        let name = state.name.clone();
+        self.unique_state(prefix, &state.name);
+        let StringInfo { name, .. } = state.name.clone();
         let state_name = format!("{}.{}", prefix, name);
-        self.unique_state(&state_name);
         match &state.typ {
             StateType::Accept => {
                 self.accept_states.insert(state_name);
@@ -123,48 +116,43 @@ impl IR {
             StateType::Reject => {
                 self.reject_states.insert(state_name);
             }
-            StateType::State(component, _, _) => match component {
-                None => {
-                    self.transition_states.insert(state_name);
-                }
-                Some(_comp) => {}
-            },
+            StateType::State(None, _, _) => {
+                self.transition_states.insert(state_name);
+            }
+            _ => {}
         };
     }
 
     fn add_blueprint_state(
         &mut self,
         prefix: &String,
-        name: &String,
-        comp: &String,
+        state: &StringInfo,
+        blueprint: &StringInfo,
         transitions: &Vec<Transition>,
         comps_input: &HashMap<String, String>,
         comps_output: &HashMap<String, Vec<(String, bool)>>,
     ) {
+        let StringInfo { name, info } = state;
+        let StringInfo {
+            name: comp,
+            info: cinfo,
+        } = blueprint;
         // Check that component exists
         if !comps_input.contains_key(comp) {
             self.errors.push(Error::Unknown {
                 typ: "component alias".to_string(),
                 found: comp.clone(),
-                info: Info {
-                    line: 0,
-                    from: 0,
-                    to: 0,
-                },
+                info: cinfo.clone(),
             });
             return;
         }
-        // Check that state doesn't already exist (unless final)
+        // Check that state doesn't already exist (unless final) TODO: Think about this?
         let state_name = format!("{}.{}.{}", prefix, comp, name);
         if self.transition_states.contains(&state_name) {
             self.errors.push(Error::Defined {
                 typ: "State".to_string(),
                 name: state_name.clone(),
-                info: Info {
-                    line: 0,
-                    from: 0,
-                    to: 0,
-                },
+                info: info.clone(),
             });
             return;
         }
@@ -194,11 +182,7 @@ impl IR {
                 if comps_output[comp].iter().all(|(st, _)| st != name) {
                     self.errors.push(Error::NotAllowed {
                         reason: "Rewriting non-final blueprint states".to_string(),
-                        info: Info {
-                            line: 0,
-                            from: 0,
-                            to: 0,
-                        },
+                        info: info.clone(),
                     });
                     return;
                 }
@@ -220,7 +204,7 @@ impl IR {
         comps_input: &HashMap<String, String>,
         comps_output: &HashMap<String, Vec<(String, bool)>>,
     ) {
-        let name = state.name.clone();
+        let StringInfo { name, .. } = state.name.clone();
         if let StateType::State(component, _initial, transitions) = &state.typ {
             match component {
                 None => {
@@ -230,7 +214,7 @@ impl IR {
                 }
                 Some(comp) => self.add_blueprint_state(
                     prefix,
-                    &name,
+                    &state.name,
                     comp,
                     transitions,
                     comps_input,
@@ -243,19 +227,16 @@ impl IR {
     // It exists and there are no component cycles
     fn validate_automaton(
         &mut self,
-        name: &String,
+        automaton: &StringInfo,
         automata: &HashMap<String, &Automaton>,
         visited: &HashSet<String>,
     ) -> Option<()> {
+        let StringInfo { name, info } = automaton;
         if !automata.contains_key(name) {
             self.errors.push(Error::Unknown {
                 typ: "automaton".to_string(),
                 found: name.clone(),
-                info: Info {
-                    line: 0,
-                    from: 0,
-                    to: 0,
-                },
+                info: info.clone(),
             });
             return None;
         }
@@ -263,11 +244,7 @@ impl IR {
             self.errors.push(Error::Cycle {
                 typ: "component".to_string(),
                 name: name.clone(),
-                info: Info {
-                    line: 0,
-                    from: 0,
-                    to: 0,
-                },
+                info: info.clone(),
             });
             return None;
         }
@@ -275,11 +252,7 @@ impl IR {
             self.errors.push(Error::Defined {
                 typ: "Automaton".to_string(),
                 name: name.clone(),
-                info: Info {
-                    line: 0,
-                    from: 0,
-                    to: 0,
-                },
+                info: info.clone(),
             })
         }
         Some(())
@@ -288,27 +261,45 @@ impl IR {
     // Returns initial state and final states
     fn add_automaton(
         &mut self,
+        automaton: &StringInfo,
         automata: &HashMap<String, &Automaton>,
         visited: &mut HashSet<String>,
         prefix: &String,
-        name: &String,
     ) -> Option<(String, Vec<(String, bool)>)> {
-        self.validate_automaton(name, automata, visited)?;
+        self.validate_automaton(automaton, automata, visited)?;
+        let StringInfo { name, info } = automaton;
         visited.insert(name.clone());
         // Recursively add components
         let mut comps_input: HashMap<String, String> = HashMap::new();
         let mut comps_output: HashMap<String, Vec<(String, bool)>> = HashMap::new();
-        automata[name].components.iter().for_each(|(auto, comp)| {
-            self.add_automaton(automata, visited, &format!("{}.{}", prefix, comp), auto)
-                .into_iter()
-                .for_each(|(comp_input, mut comp_outputs)| {
-                    comps_input.insert(comp.clone(), comp_input);
-                    comps_output
-                        .entry(comp.clone())
-                        .or_insert(Vec::new())
-                        .append(&mut comp_outputs);
-                })
-        });
+        let mut aliases: HashSet<String> = HashSet::new();
+        for (
+            auto,
+            StringInfo {
+                name: comp,
+                info: cinfo,
+            },
+        ) in automata[name].components.iter()
+        {
+            if aliases.contains(comp) {
+                self.errors.push(Error::Defined {
+                    typ: "Alias".to_string(),
+                    name: comp.clone(),
+                    info: cinfo.clone(),
+                });
+                continue;
+            }
+            aliases.insert(comp.clone());
+            if let Some((comp_input, mut comp_outputs)) =
+                self.add_automaton(&auto, automata, visited, &format!("{}.{}", prefix, comp))
+            {
+                comps_input.insert(comp.clone(), comp_input);
+                comps_output
+                    .entry(comp.clone())
+                    .or_insert(Vec::new())
+                    .append(&mut comp_outputs);
+            }
+        }
         visited.remove(name);
         // Add shallow states, then full states
         for state in automata[name].states.iter() {
@@ -322,36 +313,34 @@ impl IR {
             .states
             .iter()
             .flat_map(|state| match state.typ {
-                StateType::Accept => Some((state.name.clone(), true)),
-                StateType::Reject => Some((state.name.clone(), false)),
+                StateType::Accept => Some((state.name.name.clone(), true)),
+                StateType::Reject => Some((state.name.name.clone(), false)),
                 _ => None,
             })
             .collect();
         // Check initial state validity
         let mut initial_state: Option<String> = None;
+        if automata[name].states.is_empty() {
+            self.errors.push(Error::NotAllowed {
+                reason: "Automaton without states".to_string(),
+                info: info.clone(),
+            });
+        }
         for state in automata[name].states.iter() {
             if let StateType::State(comp, true, _) = &state.typ {
                 if comp.is_none() {
                     if initial_state.is_some() {
                         self.errors.push(Error::NotAllowed {
                             reason: "Having multiple initial states".to_string(),
-                            info: Info {
-                                line: 0,
-                                from: 0,
-                                to: 0,
-                            },
+                            info: state.name.info.clone(),
                         });
                     } else {
-                        initial_state = Some(state.name.clone());
+                        initial_state = Some(state.name.name.clone());
                     }
                 } else {
                     self.errors.push(Error::NotAllowed {
                         reason: "Marking component state as initial".to_string(),
-                        info: Info {
-                            line: 0,
-                            from: 0,
-                            to: 0,
-                        },
+                        info: state.name.info.clone(),
                     });
                 }
             }
@@ -362,50 +351,63 @@ impl IR {
 }
 
 // Add automatic sink state for full coverage
-fn add_sink_states(program: &mut Vec<Automaton>) {
-    program.iter_mut().for_each(|automaton| {
+fn add_sink_states(automata: &mut Vec<Automaton>) {
+    for automaton in automata.iter_mut() {
         let mut sink = false;
-        automaton
-            .states
-            .iter_mut()
-            .for_each(|state| match &mut state.typ {
+        for state in automaton.states.iter_mut() {
+            match &mut state.typ {
                 StateType::State(_, _, transitions) => {
                     if !transitions.iter().any(|t| t.read == '_') {
                         transitions.push(Transition {
                             read: '_',
                             write: '_',
                             mov: Move::N,
-                            state: ("sink".to_string(), None),
+                            state: (
+                                StringInfo {
+                                    name: "sink".to_string(),
+                                    info: automaton.name.info.clone(),
+                                },
+                                None,
+                            ),
                         });
                         sink = true;
                     }
                 }
                 _ => {}
-            });
+            }
+        }
         if sink {
             automaton.states.push(State {
-                name: "sink".to_string(),
+                name: StringInfo {
+                    name: "sink".to_string(),
+                    info: automaton.name.info.clone(),
+                },
                 typ: StateType::Reject,
                 desc: "generated sink state".to_string(),
             });
         }
-    });
+    }
 }
 
-pub fn remove_components(mut program: Vec<Automaton>) -> IR {
+pub fn flatten_automata(mut program: Vec<Automaton>) -> FAIR {
     add_sink_states(&mut program);
     let mut visited = HashSet::new();
     let automata: HashMap<_, _> = program
         .iter()
-        .map(|auto| (auto.name.clone(), auto))
+        .map(|auto| (auto.name.name.clone(), auto))
         .collect();
-    let mut ir = IR::new();
-    for auto in program.iter() {
-        if let Some((initial, _)) =
-            ir.add_automaton(&automata, &mut visited, &auto.name, &auto.name)
-        {
-            ir.initial_states
-                .insert(auto.name.clone(), format!("{}.{}", auto.name, initial));
+    let mut ir = FAIR::new();
+    for automaton in program.iter() {
+        if let Some((initial, _)) = ir.add_automaton(
+            &automaton.name,
+            &automata,
+            &mut visited,
+            &automaton.name.name,
+        ) {
+            ir.initial_states.insert(
+                automaton.name.name.clone(),
+                format!("{}.{}", automaton.name.name, initial),
+            );
         }
     }
     ir
@@ -418,11 +420,11 @@ mod tests {
     #[test]
     pub fn test_flat_automaton() {
         let program = vec![Automaton {
-            name: "main".to_string(),
+            name: StringInfo::from("main"),
             components: Vec::new(),
             states: vec![
                 State {
-                    name: "first".to_string(),
+                    name: StringInfo::from("first"),
                     typ: StateType::State(
                         None,
                         true,
@@ -431,32 +433,32 @@ mod tests {
                                 read: '0',
                                 write: 'A',
                                 mov: Move::L,
-                                state: ("good".to_string(), None),
+                                state: (StringInfo::from("good"), None),
                             },
                             Transition {
                                 read: '_',
                                 write: 'B',
                                 mov: Move::R,
-                                state: ("bad".to_string(), None),
+                                state: (StringInfo::from("bad"), None),
                             },
                         ],
                     ),
                     desc: String::new(),
                 },
                 State {
-                    name: "good".to_string(),
+                    name: StringInfo::from("good"),
                     typ: StateType::Accept,
                     desc: "accepting state".to_string(),
                 },
                 State {
-                    name: "bad".to_string(),
+                    name: StringInfo::from("bad"),
                     typ: StateType::Reject,
                     desc: "rejecting state".to_string(),
                 },
             ],
             desc: String::new(),
         }];
-        let result = remove_components(program);
+        let result = flatten_automata(program);
         assert_eq!(result.initial_states.len(), 1);
         assert_eq!(result.initial_states["main"], "main.first".to_string());
         assert!(result.transition_states.contains(&"main.first".to_string()));
@@ -476,11 +478,11 @@ mod tests {
     pub fn test_nested_automaton() {
         let program = vec![
             Automaton {
-                name: "move".to_string(),
+                name: StringInfo::from("move"),
                 components: Vec::new(),
                 states: vec![
                     State {
-                        name: "q0".to_string(),
+                        name: StringInfo::from("q0"),
                         typ: StateType::State(
                             None,
                             true,
@@ -488,13 +490,13 @@ mod tests {
                                 read: '_',
                                 write: '_',
                                 mov: Move::R,
-                                state: ("q1".to_string(), None),
+                                state: (StringInfo::from("q1"), None),
                             }],
                         ),
                         desc: "simple state".to_string(),
                     },
                     State {
-                        name: "q1".to_string(),
+                        name: StringInfo::from("q1"),
                         typ: StateType::Accept,
                         desc: "final state".to_string(),
                     },
@@ -502,11 +504,11 @@ mod tests {
                 desc: "move\none\ncell".to_string(),
             },
             Automaton {
-                name: "add".to_string(),
-                components: vec![("move".to_string(), "m".to_string())],
+                name: StringInfo::from("add"),
+                components: vec![(StringInfo::from("move"), StringInfo::from("m"))],
                 states: vec![
                     State {
-                        name: "first".to_string(),
+                        name: StringInfo::from("first"),
                         typ: StateType::State(
                             None,
                             true,
@@ -515,47 +517,47 @@ mod tests {
                                     read: '1',
                                     write: '0',
                                     mov: Move::N,
-                                    state: ("q0".to_string(), Some("m".to_string())),
+                                    state: (StringInfo::from("q0"), Some(StringInfo::from("m"))),
                                 },
                                 Transition {
                                     read: '0',
                                     write: '1',
                                     mov: Move::N,
-                                    state: ("input".to_string(), Some("m".to_string())),
+                                    state: (StringInfo::from("input"), Some(StringInfo::from("m"))),
                                 },
                             ],
                         ),
                         desc: String::new(),
                     },
                     State {
-                        name: "q1".to_string(),
+                        name: StringInfo::from("q1"),
                         typ: StateType::State(
-                            Some("m".to_string()),
+                            Some(StringInfo::from("m")),
                             false,
                             vec![
                                 Transition {
                                     read: 'A',
                                     write: '_',
                                     mov: Move::N,
-                                    state: ("done".to_string(), None),
+                                    state: (StringInfo::from("done"), None),
                                 },
                                 Transition {
                                     read: '_',
                                     write: 'B',
                                     mov: Move::N,
-                                    state: ("ups".to_string(), None),
+                                    state: (StringInfo::from("ups"), None),
                                 },
                             ],
                         ),
                         desc: String::new(),
                     },
                     State {
-                        name: "done".to_string(),
+                        name: StringInfo::from("done"),
                         typ: StateType::Accept,
                         desc: String::new(),
                     },
                     State {
-                        name: "ups".to_string(),
+                        name: StringInfo::from("ups"),
                         typ: StateType::Reject,
                         desc: "upsie".to_string(),
                     },
@@ -563,14 +565,14 @@ mod tests {
                 desc: "some complicated machine".to_string(),
             },
             Automaton {
-                name: "main".to_string(),
+                name: StringInfo::from("main"),
                 components: vec![
-                    ("add".to_string(), "a1".to_string()),
-                    ("add".to_string(), "a2".to_string()),
+                    (StringInfo::from("add"), StringInfo::from("a1")),
+                    (StringInfo::from("add"), StringInfo::from("a2")),
                 ],
                 states: vec![
                     State {
-                        name: "first".to_string(),
+                        name: StringInfo::from("first"),
                         typ: StateType::State(
                             None,
                             true,
@@ -579,67 +581,73 @@ mod tests {
                                     read: '&',
                                     write: '@',
                                     mov: Move::L,
-                                    state: ("input".to_string(), Some("a1".to_string())),
+                                    state: (
+                                        StringInfo::from("input"),
+                                        Some(StringInfo::from("a1")),
+                                    ),
                                 },
                                 Transition {
                                     read: '_',
                                     write: '2',
                                     mov: Move::N,
-                                    state: ("first".to_string(), Some("a2".to_string())),
+                                    state: (
+                                        StringInfo::from("first"),
+                                        Some(StringInfo::from("a2")),
+                                    ),
                                 },
                             ],
                         ),
                         desc: "this state is pretty cool huh".to_string(),
                     },
                     State {
-                        name: "output".to_string(),
+                        name: StringInfo::from("output"),
                         typ: StateType::State(
-                            Some("a1".to_string()),
+                            Some(StringInfo::from("a1")),
                             false,
                             vec![Transition {
                                 read: '_',
                                 write: '_',
                                 mov: Move::N,
-                                state: ("finally".to_string(), None),
+                                state: (StringInfo::from("finally"), None),
                             }],
                         ),
                         desc: String::new(),
                     },
                     State {
-                        name: "accept".to_string(),
+                        name: StringInfo::from("accept"),
                         typ: StateType::State(
-                            Some("a2".to_string()),
+                            Some(StringInfo::from("a2")),
                             false,
                             vec![Transition {
                                 read: '_',
                                 write: '_',
                                 mov: Move::N,
-                                state: ("finally".to_string(), None),
+                                state: (StringInfo::from("finally"), None),
                             }],
                         ),
                         desc: "all accepting state of component a2".to_string(),
                     },
                     State {
-                        name: "reject".to_string(),
+                        name: StringInfo::from("reject"),
                         typ: StateType::State(
-                            Some("a2".to_string()),
+                            Some(StringInfo::from("a2")),
                             false,
                             vec![Transition {
                                 read: '_',
                                 write: '_',
                                 mov: Move::N,
-                                state: ("double_ups".to_string(), None),
+                                state: (StringInfo::from("double_ups"), None),
                             }],
                         ),
                         desc: String::new(),
                     },
                     State {
-                        name: "finally".to_string(),
+                        name: StringInfo::from("finally"),
                         typ: StateType::Accept,
                         desc: String::new(),
                     },
                     State {
-                        name: "double_ups".to_string(),
+                        name: StringInfo::from("double_ups"),
                         typ: StateType::Reject,
                         desc: "you really messed up".to_string(),
                     },
@@ -647,7 +655,7 @@ mod tests {
                 desc: "turing machines are cool".to_string(),
             },
         ];
-        let ir = remove_components(program);
+        let ir = flatten_automata(program);
         assert_eq!(ir.initial_states.len(), 3);
         assert_eq!(
             ir.initial_states,

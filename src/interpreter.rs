@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use crate::ast::Ast;
 use crate::ast::Move;
+use crate::fair::flatten_automata;
 use crate::gem;
 use crate::info::Error;
-use crate::ir::remove_components;
 
 pub struct Interpreter {
     initial_states: HashMap<String, String>,
@@ -32,7 +32,7 @@ impl Interpreter {
             automata,
             mut errors,
         } = program;
-        let mut ir = remove_components(automata);
+        let mut ir = flatten_automata(automata);
         errors.append(&mut ir.errors);
         if !errors.is_empty() {
             return Err(errors);

@@ -35,7 +35,7 @@ fn main() {
             Ok(Ast { automata, .. }) => {
                 println!("Automata:");
                 for automaton in automata {
-                    println!("- {}", automaton.name);
+                    println!("- {}", automaton.name.name);
                     if desc && automaton.desc != String::new() {
                         for line in automaton.desc.lines() {
                             println!("  // {}", line);
@@ -44,7 +44,7 @@ fn main() {
                     if all {
                         println!("  States:");
                         for state in automaton.states {
-                            println!("  - {}", state.name);
+                            println!("  - {}", state.name.name);
                             if desc && state.desc != String::new() {
                                 for line in state.desc.lines() {
                                     println!("      // {}", line);

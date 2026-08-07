@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::info::{Error, Info};
+use crate::info::*;
 use crate::token::*;
 pub struct Parser {
     tokens: Vec<TokenInfo>,
@@ -163,7 +163,7 @@ impl Parser {
         }
     }
 
-    fn parse_ident(&mut self, line: u32) -> Result<(String, String), Error> {
+    fn parse_ident(&mut self, line: u32) -> Result<(StringInfo, String), Error> {
         match self.peek() {
             Some(token) if token.info.line != line => Err(Error::Missing {
                 expected: "identifier".to_string(),
@@ -171,7 +171,13 @@ impl Parser {
             }),
             Some(token) => match &token.token {
                 Token::Ident(name, description) => {
-                    let res = Ok((name.clone(), description.clone()));
+                    let res = Ok((
+                        StringInfo {
+                            name: name.clone(),
+                            info: token.info.clone(),
+                        },
+                        description.clone(),
+                    ));
                     self.advance();
                     res
                 }
@@ -186,7 +192,10 @@ impl Parser {
         }
     }
 
-    fn parse_state_name(&mut self, line: u32) -> Result<(String, Option<String>, String), Error> {
+    fn parse_state_name(
+        &mut self,
+        line: u32,
+    ) -> Result<(StringInfo, Option<StringInfo>, String), Error> {
         let (name, desc) = self.parse_ident(line)?;
         match self.peek() {
             Some(token) if token.token == Token::Dot && token.info.line == line => {
@@ -431,7 +440,7 @@ impl Parser {
         states
     }
 
-    fn parse_component(&mut self) -> Result<(String, String), Error> {
+    fn parse_component(&mut self) -> Result<(StringInfo, StringInfo), Error> {
         let line = self.get_line();
         let path = self.parse_ident(line)?.0;
         self.expect_on_line(&Token::As, line)?;
@@ -439,7 +448,7 @@ impl Parser {
         Ok((path, name))
     }
 
-    fn parse_components(&mut self) -> Vec<(String, String)> {
+    fn parse_components(&mut self) -> Vec<(StringInfo, StringInfo)> {
         let mut components = Vec::new();
         let mut recovered = false;
         loop {
@@ -605,7 +614,6 @@ mod tests {
     use super::*;
     use crate::ast::Automaton;
     use crate::ast::State;
-    use crate::info::*;
     use Token::*;
 
     fn default_info(tokens: Vec<Token>) -> Vec<TokenInfo> {
@@ -613,11 +621,7 @@ mod tests {
             .into_iter()
             .map(|tok| TokenInfo {
                 token: tok,
-                info: Info {
-                    line: 0,
-                    from: 0,
-                    to: 0,
-                },
+                info: Info::default(),
             })
             .collect()
     }
@@ -643,7 +647,7 @@ mod tests {
                 read: 'A',
                 write: 'B',
                 mov: Move::L,
-                state: ("s2".to_string(), None)
+                state: (StringInfo::from("s2"), None)
             }
         );
     }
@@ -673,7 +677,7 @@ mod tests {
         assert_eq!(
             s,
             State {
-                name: "first".to_string(),
+                name: StringInfo::from("first"),
                 typ: StateType::State(
                     None,
                     true,
@@ -681,7 +685,7 @@ mod tests {
                         read: '_',
                         write: '@',
                         mov: Move::R,
-                        state: ("input".to_string(), Some("add".to_string()))
+                        state: (StringInfo::from("input"), Some(StringInfo::from("add")))
                     }]
                 ),
                 desc: "this is the initial state".to_string()
@@ -708,15 +712,18 @@ mod tests {
         assert_eq!(
             s,
             State {
-                name: "some_name".to_string(),
+                name: StringInfo::from("some_name"),
                 typ: StateType::State(
-                    Some("x".to_string()),
+                    Some(StringInfo::from("x")),
                     false,
                     vec![Transition {
                         read: '_',
                         write: '_',
                         mov: Move::N,
-                        state: ("some_name2".to_string(), Some("y12".to_string()))
+                        state: (
+                            StringInfo::from("some_name2"),
+                            Some(StringInfo::from("y12"))
+                        )
                     }]
                 ),
                 desc: "could be y".to_string()
@@ -738,7 +745,7 @@ mod tests {
         assert_eq!(
             s,
             State {
-                name: "done".to_string(),
+                name: StringInfo::from("done"),
                 typ: StateType::Accept,
                 desc: "final state".to_string()
             }
@@ -756,7 +763,7 @@ mod tests {
         assert_eq!(
             s,
             State {
-                name: "over".to_string(),
+                name: StringInfo::from("over"),
                 typ: StateType::Reject,
                 desc: String::new()
             }
@@ -815,14 +822,14 @@ mod tests {
         assert_eq!(
             a,
             Automaton {
-                name: "main".to_string(),
+                name: StringInfo::from("main"),
                 components: vec![
-                    ("add".to_string(), "a1".to_string()),
-                    ("other_auto".to_string(), "unused".to_string())
+                    (StringInfo::from("add"), StringInfo::from("a1")),
+                    (StringInfo::from("other_auto"), StringInfo::from("unused"))
                 ],
                 states: vec![
                     State {
-                        name: "start".to_string(),
+                        name: StringInfo::from("start"),
                         typ: StateType::State(
                             None,
                             true,
@@ -830,27 +837,27 @@ mod tests {
                                 read: '_',
                                 write: '0',
                                 mov: Move::N,
-                                state: ("input".to_string(), Some("a1".to_string()))
+                                state: (StringInfo::from("input"), Some(StringInfo::from("a1")))
                             }]
                         ),
                         desc: "first state".to_string()
                     },
                     State {
-                        name: "output".to_string(),
+                        name: StringInfo::from("output"),
                         typ: StateType::State(
-                            Some("a1".to_string()),
+                            Some(StringInfo::from("a1")),
                             false,
                             vec![Transition {
                                 read: '_',
                                 write: '_',
                                 mov: Move::N,
-                                state: ("done".to_string(), None)
+                                state: (StringInfo::from("done"), None)
                             }]
                         ),
                         desc: "final state \n of a \n component".to_string()
                     },
                     State {
-                        name: "done".to_string(),
+                        name: StringInfo::from("done"),
                         typ: StateType::Accept,
                         desc: String::new()
                     }

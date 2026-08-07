@@ -1,5 +1,5 @@
 use crate::info::Error;
-use crate::info::Info;
+use crate::info::StringInfo;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Move {
@@ -9,37 +9,31 @@ pub enum Move {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct StringInfo {
-    pub name: String,
-    pub info: Info,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Transition {
     pub read: char,
     pub write: char,
     pub mov: Move,
-    pub state: (String, Option<String>),
+    pub state: (StringInfo, Option<StringInfo>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateType {
     Accept,
     Reject,
-    State(Option<String>, bool, Vec<Transition>), // name, parent, initial, transitions
+    State(Option<StringInfo>, bool, Vec<Transition>), // name, parent, initial, transitions
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct State {
-    pub name: String,
+    pub name: StringInfo,
     pub typ: StateType,
     pub desc: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Automaton {
-    pub name: String,
-    pub components: Vec<(String, String)>,
+    pub name: StringInfo,
+    pub components: Vec<(StringInfo, StringInfo)>,
     pub states: Vec<State>,
     pub desc: String,
 }
