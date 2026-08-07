@@ -1,6 +1,5 @@
-use std::fmt::Display;
-
 use crate::token::TokenInfo;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Info {
@@ -11,45 +10,86 @@ pub struct Info {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
-    Unknown(String, String, Info),
-    NotTerminated(String, String, Info),
-    MalformedIdentifier(String, Info),
-    EOF(String),
-    Unexpected(TokenInfo, String),
-    Missing(String, Info),
-    Defined(String, String, Info),
-    NotAllowed(String, Info),
-    Cycle(String, String, Info),
-    Other(String),
+    Unknown {
+        typ: String,
+        found: String,
+        info: Info,
+    },
+    NotTerminated {
+        start: String,
+        end: String,
+        info: Info,
+    },
+    MalformedIdentifier {
+        ident: String,
+        info: Info,
+    },
+    EOF {
+        expected: String,
+    },
+    Unexpected {
+        expected: String,
+        token: TokenInfo,
+    },
+    Missing {
+        expected: String,
+        info: Info,
+    },
+    Defined {
+        typ: String,
+        name: String,
+        info: Info,
+    },
+    NotAllowed {
+        reason: String,
+        info: Info,
+    },
+    Cycle {
+        typ: String,
+        name: String,
+        info: Info,
+    },
+    Other {
+        msg: String,
+    },
 }
 
 impl Error {
     pub fn message(&self) -> String {
         match self {
-            Error::Unknown(typ, found, _) => format!("Unknown {} {}", typ, found),
-            Error::NotTerminated(start, end, _) => {
+            Error::Unknown { typ, found, .. } => format!("Unknown {} {}", typ, found),
+            Error::NotTerminated { start, end, .. } => {
                 format!("Not terminated {}, maybe add {}", start, end)
             }
-            Error::MalformedIdentifier(x, _) => {
-                format!("Malformed identifier {}, allowed symbols a-z, 0-9 and _", x)
+            Error::MalformedIdentifier { ident, .. } => {
+                format!(
+                    "Malformed identifier {}, allowed symbols a-z, 0-9 and _",
+                    ident
+                )
             }
-            Error::Unexpected(token, str) => format!("Expected {}, found {}", str, token.token),
-            Error::EOF(msg) => format!("Reached EndOfFile, expected {}", msg),
-            Error::Missing(expected, _) => format!("Missing {}", expected),
-            Error::Defined(typ, name, _) => format!("{} {} defined already", typ, name),
-            Error::NotAllowed(reason, _) => format!("{} is not allowed", reason),
-            Error::Cycle(typ, name, _) => format!("Found {} cycle in {}", typ, name), // TODO: better cycle message (trace)
-            Error::Other(msg) => msg.to_string(),
+            Error::Unexpected { token, expected } => {
+                format!("Expected {}, found {}", expected, token.token)
+            }
+            Error::EOF { expected } => format!("Reached EndOfFile, expected {}", expected),
+            Error::Missing { expected, .. } => format!("Missing {}", expected),
+            Error::Defined { typ, name, .. } => format!("{} {} defined already", typ, name),
+            Error::NotAllowed { reason, .. } => format!("{} is not allowed", reason),
+            Error::Cycle { typ, name, .. } => format!("Found {} cycle in {}", typ, name), // TODO: better cycle message (trace)
+            Error::Other { msg } => msg.to_string(),
         }
     }
     pub fn info(&self) -> Option<&Info> {
         match self {
-            Error::Unknown(_, _, info) => Some(info),
-            Error::NotTerminated(_, _, info) => Some(info),
-            Error::MalformedIdentifier(_, info) => Some(info),
-            Error::Unexpected(tok, _) => Some(&tok.info),
-            Error::Missing(_, info) => Some(info),
-            _ => None,
+            Error::Unknown { info, .. } => Some(info),
+            Error::NotTerminated { info, .. } => Some(info),
+            Error::MalformedIdentifier { info, .. } => Some(info),
+            Error::Unexpected { token, .. } => Some(&token.info),
+            Error::Missing { info, .. } => Some(info),
+            Error::Defined { info, .. } => Some(info),
+            Error::NotAllowed { info, .. } => Some(info),
+            Error::Cycle { info, .. } => Some(info),
+            Error::EOF { .. } => None,
+            Error::Other { .. } => None,
         }
     }
     pub fn print_context(&self) {

@@ -41,15 +41,15 @@ impl IR {
                     comp,
                     if name == "input" {
                         if !comps_input.contains_key(comp) {
-                            self.errors.push(Error::Unknown(
-                                "component alias".to_string(),
-                                comp.clone(),
-                                Info {
+                            self.errors.push(Error::Unknown {
+                                typ: "component alias".to_string(),
+                                found: comp.clone(),
+                                info: Info {
                                     line: 0,
                                     from: 0,
                                     to: 0,
                                 },
-                            ));
+                            });
                             return;
                         }
                         &comps_input[comp]
@@ -65,15 +65,15 @@ impl IR {
             && !self.accept_states.contains(&state)
             && !self.reject_states.contains(&state)
         {
-            self.errors.push(Error::Unknown(
-                "state".to_string(),
-                state,
-                Info {
+            self.errors.push(Error::Unknown {
+                typ: "state".to_string(),
+                found: state,
+                info: Info {
                     line: 0,
                     from: 0,
                     to: 0,
                 },
-            ));
+            });
             return;
         }
         let from = format!("{}.{}", prefix, from_state);
@@ -94,15 +94,15 @@ impl IR {
             || self.reject_states.contains(state)
             || self.transition_states.contains(state)
         {
-            self.errors.push(Error::Defined(
-                "State".to_string(),
-                state.clone(),
-                Info {
+            self.errors.push(Error::Defined {
+                typ: "State".to_string(),
+                name: state.clone(),
+                info: Info {
                     line: 0,
                     from: 0,
                     to: 0,
                 },
-            ))
+            })
         }
     }
 
@@ -143,29 +143,29 @@ impl IR {
     ) {
         // Check that component exists
         if !comps_input.contains_key(comp) {
-            self.errors.push(Error::Unknown(
-                "component alias".to_string(),
-                comp.clone(),
-                Info {
+            self.errors.push(Error::Unknown {
+                typ: "component alias".to_string(),
+                found: comp.clone(),
+                info: Info {
                     line: 0,
                     from: 0,
                     to: 0,
                 },
-            ));
+            });
             return;
         }
         // Check that state doesn't already exist (unless final)
         let state_name = format!("{}.{}.{}", prefix, comp, name);
         if self.transition_states.contains(&state_name) {
-            self.errors.push(Error::Defined(
-                "State".to_string(),
-                state_name.clone(),
-                Info {
+            self.errors.push(Error::Defined {
+                typ: "State".to_string(),
+                name: state_name.clone(),
+                info: Info {
                     line: 0,
                     from: 0,
                     to: 0,
                 },
-            ));
+            });
             return;
         }
         // Handle special syntax for component states
@@ -192,14 +192,14 @@ impl IR {
             _ => {
                 // Only rewrite final states
                 if comps_output[comp].iter().all(|(st, _)| st != name) {
-                    self.errors.push(Error::NotAllowed(
-                        "Rewriting non-final blueprint states".to_string(),
-                        Info {
+                    self.errors.push(Error::NotAllowed {
+                        reason: "Rewriting non-final blueprint states".to_string(),
+                        info: Info {
                             line: 0,
                             from: 0,
                             to: 0,
                         },
-                    ));
+                    });
                     return;
                 }
                 self.accept_states.remove(&state_name);
@@ -248,28 +248,39 @@ impl IR {
         visited: &HashSet<String>,
     ) -> Option<()> {
         if !automata.contains_key(name) {
-            self.errors.push(Error::Unknown(
-                "automaton".to_string(),
-                name.clone(),
-                Info {
+            self.errors.push(Error::Unknown {
+                typ: "automaton".to_string(),
+                found: name.clone(),
+                info: Info {
                     line: 0,
                     from: 0,
                     to: 0,
                 },
-            ));
+            });
             return None;
         }
         if visited.contains(name) {
-            self.errors.push(Error::Cycle(
-                "component".to_string(),
-                name.clone(),
-                Info {
+            self.errors.push(Error::Cycle {
+                typ: "component".to_string(),
+                name: name.clone(),
+                info: Info {
                     line: 0,
                     from: 0,
                     to: 0,
                 },
-            ));
+            });
             return None;
+        }
+        if self.initial_states.contains_key(name) {
+            self.errors.push(Error::Defined {
+                typ: "Automaton".to_string(),
+                name: name.clone(),
+                info: Info {
+                    line: 0,
+                    from: 0,
+                    to: 0,
+                },
+            })
         }
         Some(())
     }
@@ -322,26 +333,26 @@ impl IR {
             if let StateType::State(comp, true, _) = &state.typ {
                 if comp.is_none() {
                     if initial_state.is_some() {
-                        self.errors.push(Error::NotAllowed(
-                            "Having multiple initial states".to_string(),
-                            Info {
+                        self.errors.push(Error::NotAllowed {
+                            reason: "Having multiple initial states".to_string(),
+                            info: Info {
                                 line: 0,
                                 from: 0,
                                 to: 0,
                             },
-                        ));
+                        });
                     } else {
                         initial_state = Some(state.name.clone());
                     }
                 } else {
-                    self.errors.push(Error::NotAllowed(
-                        "Marking component state as initial".to_string(),
-                        Info {
+                    self.errors.push(Error::NotAllowed {
+                        reason: "Marking component state as initial".to_string(),
+                        info: Info {
                             line: 0,
                             from: 0,
                             to: 0,
                         },
-                    ));
+                    });
                 }
             }
         }

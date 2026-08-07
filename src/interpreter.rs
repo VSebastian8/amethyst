@@ -49,7 +49,9 @@ impl Interpreter {
     pub fn load(&mut self, filename: &str) -> Result<(), Vec<Error>> {
         match gem::load_ast(filename) {
             Ok(program) => self.load_program(program),
-            Err(err) => Err(vec![Error::Other(err.to_string())]),
+            Err(err) => Err(vec![Error::Other {
+                msg: err.to_string(),
+            }]),
         }
     }
 

@@ -77,15 +77,15 @@ impl Lexer {
                             }
                         }
                     } else {
-                        self.errors.push(Error::NotTerminated(
-                            "`{`".to_string(),
-                            "`}`".to_string(),
-                            Info {
+                        self.errors.push(Error::NotTerminated {
+                            start: "`{`".to_string(),
+                            end: "`}`".to_string(),
+                            info: Info {
                                 line,
                                 from,
                                 to: self.column,
                             },
-                        ));
+                        });
                         continue;
                     }
                 }
@@ -101,28 +101,28 @@ impl Lexer {
                                 continue;
                             }
                             _ => {
-                                self.errors.push(Error::Unknown(
-                                    "character".to_string(),
-                                    "`-`".to_string(),
-                                    Info {
+                                self.errors.push(Error::Unknown {
+                                    typ: "character".to_string(),
+                                    found: "`-`".to_string(),
+                                    info: Info {
                                         line,
                                         from,
                                         to: self.column,
                                     },
-                                ));
+                                });
                                 continue;
                             }
                         }
                     } else {
-                        self.errors.push(Error::Unknown(
-                            "character".to_string(),
-                            format!("`{}`", ch),
-                            Info {
+                        self.errors.push(Error::Unknown {
+                            typ: "character".to_string(),
+                            found: format!("`{}`", ch),
+                            info: Info {
                                 line,
                                 from,
                                 to: self.column,
                             },
-                        ));
+                        });
                         continue;
                     }
                 }
@@ -133,15 +133,15 @@ impl Lexer {
                 'A'..='Z' | '0'..='9' | '_' | '@' | '&' => Token::Symbol(ch),
                 _ => {
                     self.advance();
-                    self.errors.push(Error::Unknown(
-                        "character".to_string(),
-                        format!("`{}`", ch),
-                        Info {
+                    self.errors.push(Error::Unknown {
+                        typ: "character".to_string(),
+                        found: format!("`{}`", ch),
+                        info: Info {
                             line,
                             from,
                             to: self.column,
                         },
-                    ));
+                    });
                     continue;
                 }
             };
@@ -191,15 +191,15 @@ impl Lexer {
                 comment.push(c);
             }
         }
-        self.errors.push(Error::NotTerminated(
-            "block comment".to_string(),
-            "`-}`".to_string(),
-            Info {
+        self.errors.push(Error::NotTerminated {
+            start: "block comment".to_string(),
+            end: "`-}`".to_string(),
+            info: Info {
                 line,
                 from: to - 2,
                 to,
             },
-        ))
+        })
     }
 
     fn read_word(&mut self) -> Token {
@@ -217,14 +217,14 @@ impl Lexer {
             .chars()
             .any(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
         {
-            self.errors.push(Error::MalformedIdentifier(
-                word.clone(),
-                Info {
+            self.errors.push(Error::MalformedIdentifier {
+                ident: word.clone(),
+                info: Info {
                     line: self.line,
                     from: from,
                     to: self.column,
                 },
-            ));
+            });
         }
 
         match word.as_str() {
@@ -459,15 +459,15 @@ mod tests {
 
         assert_eq!(
             lexer.errors,
-            vec![Error::Unknown(
-                "character".to_string(),
-                "`?`".to_string(),
-                Info {
+            vec![Error::Unknown {
+                typ: "character".to_string(),
+                found: "`?`".to_string(),
+                info: Info {
                     line: 0,
                     from: 10,
                     to: 11
                 }
-            )]
+            }]
         );
     }
 
@@ -478,14 +478,14 @@ mod tests {
 
         assert_eq!(
             lexer.errors,
-            vec![Error::MalformedIdentifier(
-                "camelCase".to_string(),
-                Info {
+            vec![Error::MalformedIdentifier {
+                ident: "camelCase".to_string(),
+                info: Info {
                     line: 0,
                     from: 6,
                     to: 15
                 }
-            )]
+            }]
         );
     }
 
@@ -527,41 +527,41 @@ mod tests {
         assert_eq!(
             lexer.errors,
             vec![
-                Error::MalformedIdentifier(
-                    "stAte".to_string(),
-                    Info {
+                Error::MalformedIdentifier {
+                    ident: "stAte".to_string(),
+                    info: Info {
                         line: 0,
                         from: 0,
                         to: 5
                     }
-                ),
-                Error::Unknown(
-                    "character".to_string(),
-                    "`#`".to_string(),
-                    Info {
+                },
+                Error::Unknown {
+                    typ: "character".to_string(),
+                    found: "`#`".to_string(),
+                    info: Info {
                         line: 1,
                         from: 0,
                         to: 1
                     }
-                ),
-                Error::Unknown(
-                    "character".to_string(),
-                    "`-`".to_string(),
-                    Info {
+                },
+                Error::Unknown {
+                    typ: "character".to_string(),
+                    found: "`-`".to_string(),
+                    info: Info {
                         line: 1,
                         from: 4,
                         to: 5
                     }
-                ),
-                Error::NotTerminated(
-                    "block comment".to_string(),
-                    "`-}`".to_string(),
-                    Info {
+                },
+                Error::NotTerminated {
+                    start: "block comment".to_string(),
+                    end: "`-}`".to_string(),
+                    info: Info {
                         line: 1,
                         from: 9,
                         to: 11
                     }
-                )
+                }
             ]
         );
     }

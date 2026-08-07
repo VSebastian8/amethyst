@@ -73,25 +73,33 @@ impl Parser {
                 self.advance();
                 Ok(())
             }
-            Some(token) => Err(Error::Unexpected(token.clone(), expected.to_string())),
-            None => Err(Error::EOF(expected.to_string())),
+            Some(token) => Err(Error::Unexpected {
+                token: token.clone(),
+                expected: expected.to_string(),
+            }),
+            None => Err(Error::EOF {
+                expected: expected.to_string(),
+            }),
         }
     }
 
     fn expect_on_line(&mut self, expected: &Token, line: u32) -> Result<(), Error> {
         match self.peek() {
-            Some(token) if token.info.line != line => Err(Error::Missing(
-                expected.to_string(),
-                self.lines[line as usize].clone(),
-            )),
-            Some(token) if &token.token != expected => {
-                Err(Error::Unexpected(token.clone(), expected.to_string()))
-            }
+            Some(token) if token.info.line != line => Err(Error::Missing {
+                expected: expected.to_string(),
+                info: self.lines[line as usize].clone(),
+            }),
+            Some(token) if &token.token != expected => Err(Error::Unexpected {
+                token: token.clone(),
+                expected: expected.to_string(),
+            }),
             Some(_) => {
                 self.advance();
                 Ok(())
             }
-            None => Err(Error::EOF(expected.to_string())),
+            None => Err(Error::EOF {
+                expected: expected.to_string(),
+            }),
         }
     }
 
@@ -111,52 +119,70 @@ impl Parser {
 
     fn parse_symbol(&mut self, line: u32) -> Result<char, Error> {
         match self.advance() {
-            Some(token) if token.info.line != line => Err(Error::Missing(
-                "symbol".to_string(),
-                self.lines[line as usize].clone(),
-            )),
+            Some(token) if token.info.line != line => Err(Error::Missing {
+                expected: "symbol".to_string(),
+                info: self.lines[line as usize].clone(),
+            }),
             Some(token) => match &token.token {
                 Token::Symbol(ch) => Ok(*ch),
-                _ => Err(Error::Unexpected(token.clone(), "symbol".to_string())),
+                _ => Err(Error::Unexpected {
+                    token: token.clone(),
+                    expected: "symbol".to_string(),
+                }),
             },
-            None => Err(Error::EOF("symbol".to_string())),
+            None => Err(Error::EOF {
+                expected: "symbol".to_string(),
+            }),
         }
     }
 
     fn parse_move(&mut self, line: u32) -> Result<Move, Error> {
         match self.advance() {
-            Some(token) if token.info.line != line => Err(Error::Missing(
-                "move symbol".to_string(),
-                self.lines[line as usize].clone(),
-            )),
+            Some(token) if token.info.line != line => Err(Error::Missing {
+                expected: "move symbol".to_string(),
+                info: self.lines[line as usize].clone(),
+            }),
             Some(token) => match &token.token {
                 Token::Symbol(ch) => match ch {
                     'L' => Ok(Move::L),
                     'R' => Ok(Move::R),
                     'N' => Ok(Move::N),
-                    _ => Err(Error::Unexpected(token.clone(), "move symbol".to_string())),
+                    _ => Err(Error::Unexpected {
+                        token: token.clone(),
+                        expected: "move symbol".to_string(),
+                    }),
                 },
-                _ => Err(Error::Unexpected(token.clone(), "move symbol".to_string())),
+                _ => Err(Error::Unexpected {
+                    token: token.clone(),
+                    expected: "move symbol".to_string(),
+                }),
             },
-            None => Err(Error::EOF("symbol".to_string())),
+            None => Err(Error::EOF {
+                expected: "symbol".to_string(),
+            }),
         }
     }
 
     fn parse_ident(&mut self, line: u32) -> Result<(String, String), Error> {
         match self.peek() {
-            Some(token) if token.info.line != line => Err(Error::Missing(
-                "identifier".to_string(),
-                self.lines[line as usize].clone(),
-            )),
+            Some(token) if token.info.line != line => Err(Error::Missing {
+                expected: "identifier".to_string(),
+                info: self.lines[line as usize].clone(),
+            }),
             Some(token) => match &token.token {
                 Token::Ident(name, description) => {
                     let res = Ok((name.clone(), description.clone()));
                     self.advance();
                     res
                 }
-                _ => Err(Error::Unexpected(token.clone(), "identifier".to_string())),
+                _ => Err(Error::Unexpected {
+                    token: token.clone(),
+                    expected: "identifier".to_string(),
+                }),
             },
-            None => Err(Error::EOF("identifier".to_string())),
+            None => Err(Error::EOF {
+                expected: "identifier".to_string(),
+            }),
         }
     }
 
@@ -290,9 +316,18 @@ impl Parser {
                     transitions = self.parse_transitions();
                     self.expect(&Token::RBracket)?;
                 }
-                _ => return Err(Error::Unexpected(token.clone(), "`{` or `->`".to_string())),
+                _ => {
+                    return Err(Error::Unexpected {
+                        token: token.clone(),
+                        expected: "`{` or `->`".to_string(),
+                    })
+                }
             },
-            None => return Err(Error::EOF("`{` or `->`".to_string())),
+            None => {
+                return Err(Error::EOF {
+                    expected: "`{` or `->`".to_string(),
+                })
+            }
         }
 
         Ok(State {
@@ -315,11 +350,11 @@ impl Parser {
                     let info = self.advance().unwrap().info.clone();
                     self.parse_transitions();
                     if self.is_at_end() {
-                        self.errors.push(Error::NotTerminated(
-                            "`{`".to_string(),
-                            "`}`".to_string(),
+                        self.errors.push(Error::NotTerminated {
+                            start: "`{`".to_string(),
+                            end: "`}`".to_string(),
                             info,
-                        ))
+                        })
                     }
                     self.advance();
                     break;
@@ -355,7 +390,9 @@ impl Parser {
             Err(err) => {
                 self.errors.push(err.clone());
                 match err {
-                    Error::Unexpected(_, str) | Error::EOF(str) if str == "`}`" => {
+                    Error::Unexpected { expected, .. } | Error::EOF { expected }
+                        if expected == "`}`" =>
+                    {
                         // Special case where transitions errors have been added already
                     }
                     _ => self.state_recover(),
@@ -409,8 +446,10 @@ impl Parser {
             match self.peek_token() {
                 None => break,
                 Some(&Token::LBracket) => {
-                    self.errors
-                        .push(Error::Missing("`)`".to_string(), self.get_info()));
+                    self.errors.push(Error::Missing {
+                        expected: "`)`".to_string(),
+                        info: self.get_info(),
+                    });
                     break;
                 }
                 Some(&Token::RParanthesis) => {
@@ -482,7 +521,9 @@ impl Parser {
                 loop {
                     match self.peek_token() {
                         None => {
-                            self.errors.push(Error::EOF("'('".to_string()));
+                            self.errors.push(Error::EOF {
+                                expected: "'('".to_string(),
+                            });
                             return None;
                         }
                         Some(Token::LParanthesis) => {
@@ -846,7 +887,12 @@ mod tests {
         ]);
         let mut parser = Parser::new(tokens);
         parser.parse_state_recover();
-        assert_eq!(parser.errors, vec![Error::EOF("`}`".to_string())]);
+        assert_eq!(
+            parser.errors,
+            vec![Error::EOF {
+                expected: "`}`".to_string()
+            }]
+        );
 
         let tokens = default_info(vec![
             State,
@@ -856,7 +902,12 @@ mod tests {
         ]);
         let mut parser = Parser::new(tokens);
         parser.parse_state_recover();
-        assert_eq!(parser.errors, vec![Error::EOF("`;`".to_string())]);
+        assert_eq!(
+            parser.errors,
+            vec![Error::EOF {
+                expected: "`;`".to_string()
+            }]
+        );
     }
 
     #[test]
@@ -946,8 +997,8 @@ mod tests {
         assert_eq!(
             parser.errors,
             vec![
-                Error::Unexpected(
-                    TokenInfo {
+                Error::Unexpected {
+                    token: TokenInfo {
                         token: Ident("xor".to_string(), "".to_string()),
                         info: Info {
                             line: 0,
@@ -955,10 +1006,10 @@ mod tests {
                             to: 0
                         }
                     },
-                    "keyword `as`".to_string()
-                ),
-                Error::Unexpected(
-                    TokenInfo {
+                    expected: "keyword `as`".to_string()
+                },
+                Error::Unexpected {
+                    token: TokenInfo {
                         token: RParanthesis,
                         info: Info {
                             line: 0,
@@ -966,8 +1017,8 @@ mod tests {
                             to: 0
                         }
                     },
-                    "identifier".to_string()
-                )
+                    expected: "identifier".to_string()
+                }
             ]
         );
     }
