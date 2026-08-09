@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use crate::ast::Ast;
 use crate::ast::Move;
-use crate::fair::flatten_automata;
+use crate::fair::{flatten_automata, flatten_automaton};
 use crate::gem;
 use crate::info::Error;
 
+#[derive(Debug)]
 pub struct Interpreter {
     initial_states: HashMap<String, String>,
     final_states: HashMap<String, bool>,
@@ -46,7 +47,42 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn load(&mut self, filename: &str) -> Result<(), Vec<Error>> {
+    pub fn load_automaton(
+        &mut self,
+        program: Ast,
+        mut automaton: String,
+    ) -> Result<(), Vec<Error>> {
+        let Ast {
+            automata,
+            mut errors,
+        } = program;
+        if automaton == "main" && automata.iter().all(|auto| auto.name.name != "main") {
+            automaton = automata[0].name.name.clone();
+        }
+        let mut ir = flatten_automaton(automata, automaton);
+        errors.append(&mut ir.errors);
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        self.initial_states.extend(ir.initial_states);
+        self.final_states
+            .extend(ir.accept_states.iter().map(|s| (s.to_string(), true)));
+        self.final_states
+            .extend(ir.reject_states.iter().map(|s| (s.to_string(), false)));
+        self.transitions.extend(ir.transitions);
+        Ok(())
+    }
+
+    pub fn load(&mut self, filename: &str, automaton: String) -> Result<(), Vec<Error>> {
+        match gem::load_ast(filename) {
+            Ok(program) => self.load_automaton(program, automaton),
+            Err(err) => Err(vec![Error::Other {
+                msg: err.to_string(),
+            }]),
+        }
+    }
+
+    pub fn load_all(&mut self, filename: &str) -> Result<(), Vec<Error>> {
         match gem::load_ast(filename) {
             Ok(program) => self.load_program(program),
             Err(err) => Err(vec![Error::Other {

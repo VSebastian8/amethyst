@@ -1,5 +1,6 @@
 use amethyst::ast::Ast;
 use amethyst::cli::{Cli, Command};
+use amethyst::compiler::compile;
 use amethyst::gem;
 use amethyst::interpreter::Interpreter;
 use amethyst::lsp::run_lsp_server;
@@ -11,9 +12,24 @@ fn main() {
     let mut interpreter = Interpreter::new();
 
     match args.command {
-        Command::Check { ref input } | Command::Run { ref input, .. } => {
-            // These commands instantiate the interpreter
-            if let Err(errors) = interpreter.load(input.as_str()) {
+        Command::Test { ref input } => {
+            // Instantiate the interpreter with all automata
+            if let Err(errors) = interpreter.load_all(input.as_str()) {
+                println!("Loading file {} failed, encountered errors:", input);
+                for e in errors {
+                    e.print_context();
+                    println!("{}", e);
+                }
+                std::process::exit(1);
+            }
+        }
+        Command::Run {
+            ref input,
+            ref start,
+            ..
+        } => {
+            // Instantiate the interpreter with starting automaton
+            if let Err(errors) = interpreter.load(input.as_str(), start.clone()) {
                 println!("Loading file {} failed, encountered errors:", input);
                 for e in errors {
                     e.print_context();
@@ -26,7 +42,7 @@ fn main() {
     }
 
     match args.command {
-        Command::Check { .. } => println!("Ok, no errors found"),
+        Command::Test { .. } => println!("Ok, no errors found"),
         Command::List { input, all, desc } => match gem::load_ast(&input) {
             Err(err) => {
                 println!("Error: {}", err);
@@ -66,6 +82,13 @@ fn main() {
                 eprintln!("Error: {err}");
                 std::process::exit(1);
             }
+        }
+        Command::Compile {
+            input: _,
+            start,
+            memory: _,
+        } => {
+            compile(start);
         }
     }
 }

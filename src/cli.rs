@@ -23,6 +23,7 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Runs the interpreter
+    #[command(aliases=["r"])]
     Run {
         /// Amethyst input file (.myst)
         input: String,
@@ -40,11 +41,13 @@ pub enum Command {
         tape: String,
     },
     /// Checks that the input file is correct
-    Check {
+    #[command(aliases=["t"])]
+    Test {
         /// Amethyst input file (.myst)
         input: String,
     },
     /// Lists all available automata
+    #[command(aliases=["ls"])]
     List {
         /// Amethyst input file (.myst)
         input: String,
@@ -56,9 +59,22 @@ pub enum Command {
         desc: bool,
     },
     /// LSP
+    #[command(aliases=["s"])]
     Server {
         /// Communicate over stdio (currently the only transport supported)
         #[arg(long)]
         stdio: bool,
+    },
+    /// Compile specified automaton into a linux binary
+    #[command(aliases=["c"])]
+    Compile {
+        /// Amethyst input file (.myst)
+        input: String,
+        /// Turing Machine to compile
+        #[arg(long, short, value_name = "AUTOMATON", default_value = "main")]
+        start: String,
+        /// Maximum tape size
+        #[arg(long, short, default_value = "256")]
+        memory: usize,
     },
 }

@@ -49,7 +49,7 @@ pub fn main() {
                 }
 
                 let filename = input_parts[1];
-                if let Err(errors) = interpreter.load(filename) {
+                if let Err(errors) = interpreter.load_all(filename) {
                     println!("Loading program failed, encountered errors:");
                     for e in errors {
                         e.print_context();
@@ -63,7 +63,7 @@ pub fn main() {
             ":reload" | ":r" => match last_file {
                 None => println!("No file to reload"),
                 Some(ref file) => {
-                    if let Err(errors) = interpreter.load(&file) {
+                    if let Err(errors) = interpreter.load_all(&file) {
                         println!("Loading program failed, encountered errors:");
                         for e in errors {
                             e.print_context();

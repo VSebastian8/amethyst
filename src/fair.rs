@@ -40,7 +40,7 @@ impl FAIR {
                 info: cinfo,
             }) => {
                 format!(
-                    "{}.{}.{}",
+                    "{}{}.{}",
                     prefix,
                     comp,
                     if name == "input" {
@@ -58,7 +58,7 @@ impl FAIR {
                     }
                 )
             }
-            None => format!("{}.{}", prefix, name),
+            None => format!("{}{}", prefix, name),
         };
         // println!("Adding transition {:?} with state {:?}", t, state);
         if !self.transition_states.contains(&state)
@@ -72,7 +72,7 @@ impl FAIR {
             });
             return;
         }
-        let from = format!("{}.{}", prefix, from_state);
+        let from = format!("{}{}", prefix, from_state);
         let state_trans = self.transitions.entry(from).or_insert(HashMap::new());
         if state_trans.contains_key(&t.read) {
             println!(
@@ -86,7 +86,7 @@ impl FAIR {
 
     // ensure state does not appear before
     fn unique_state(&mut self, prefix: &String, state: &StringInfo) {
-        let name = format!("{}.{}", prefix, state.name);
+        let name = format!("{}{}", prefix, state.name);
         if self.accept_states.contains(&name)
             || self.reject_states.contains(&name)
             || self.transition_states.contains(&name)
@@ -108,7 +108,7 @@ impl FAIR {
         }
         self.unique_state(prefix, &state.name);
         let StringInfo { name, .. } = state.name.clone();
-        let state_name = format!("{}.{}", prefix, name);
+        let state_name = format!("{}{}", prefix, name);
         match &state.typ {
             StateType::Accept => {
                 self.accept_states.insert(state_name);
@@ -147,7 +147,7 @@ impl FAIR {
             return;
         }
         // Check that state doesn't already exist (unless final) TODO: Think about this?
-        let state_name = format!("{}.{}.{}", prefix, comp, name);
+        let state_name = format!("{}{}.{}", prefix, comp, name);
         if self.transition_states.contains(&state_name) {
             self.errors.push(Error::Defined {
                 typ: "State".to_string(),
@@ -165,7 +165,7 @@ impl FAIR {
                     if (name == "accept" && !*acc) || (name == "reject" && *acc) {
                         return;
                     }
-                    let rewritten_state = format!("{}.{}.{}", prefix, comp, st);
+                    let rewritten_state = format!("{}{}.{}", prefix, comp, st);
                     if *acc {
                         self.accept_states.remove(&rewritten_state);
                     } else {
@@ -291,7 +291,7 @@ impl FAIR {
             }
             aliases.insert(comp.clone());
             if let Some((comp_input, mut comp_outputs)) =
-                self.add_automaton(&auto, automata, visited, &format!("{}.{}", prefix, comp))
+                self.add_automaton(&auto, automata, visited, &format!("{}{}.", prefix, comp))
             {
                 comps_input.insert(comp.clone(), comp_input);
                 comps_output
@@ -402,13 +402,39 @@ pub fn flatten_automata(mut program: Vec<Automaton>) -> FAIR {
             &automaton.name,
             &automata,
             &mut visited,
-            &automaton.name.name,
+            &format!("{}.", automaton.name.name),
         ) {
             ir.initial_states.insert(
                 automaton.name.name.clone(),
                 format!("{}.{}", automaton.name.name, initial),
             );
         }
+    }
+    ir
+}
+
+pub fn flatten_automaton(mut program: Vec<Automaton>, automaton: String) -> FAIR {
+    add_sink_states(&mut program);
+    let mut visited = HashSet::new();
+    let automata: HashMap<_, _> = program
+        .iter()
+        .map(|auto| (auto.name.name.clone(), auto))
+        .collect();
+    let mut ir = FAIR::new();
+    if automata.contains_key(&automaton) {
+        if let Some((initial, _)) = ir.add_automaton(
+            &automata[&automaton].name,
+            &automata,
+            &mut visited,
+            &"".to_string(),
+        ) {
+            ir.initial_states
+                .insert(automata[&automaton].name.name.clone(), initial);
+        }
+    } else {
+        ir.errors.push(Error::Other {
+            msg: format!("Unknown starting automaton {}", automaton),
+        });
     }
     ir
 }
