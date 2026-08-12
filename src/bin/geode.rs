@@ -1,6 +1,6 @@
 use amethyst::ast::Ast;
 use amethyst::cli::{Cli, Command};
-use amethyst::compiler::compile;
+use amethyst::compiler::read_and_compile;
 use amethyst::gem;
 use amethyst::interpreter::Interpreter;
 use amethyst::lsp::run_lsp_server;
@@ -84,11 +84,19 @@ fn main() {
             }
         }
         Command::Compile {
-            input: _,
+            input,
             start,
             memory: _,
         } => {
-            compile(start);
+            // Compile the amethyst code and report possible errors
+            if let Err(errors) = read_and_compile(&input, start) {
+                println!("Compiling file {} failed, encountered errors:", input);
+                for e in errors {
+                    e.print_context();
+                    println!("{}", e);
+                }
+                std::process::exit(1);
+            }
         }
     }
 }

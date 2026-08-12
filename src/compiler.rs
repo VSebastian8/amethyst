@@ -1,105 +1,76 @@
-use crate::codegen::*;
-use crate::codegen::{Program, Stmt};
+use crate::ast::Ast;
+use crate::compiler::compile_program;
 use crate::elf::*;
+use crate::fair::{flatten_automaton, FAIR};
+use crate::gem::load_ast;
+use crate::{codegen::*, info};
+
+use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
 const TAPE_SIZE: u64 = 256;
 
-pub fn compile(name: String) {
-    // 1. Build the AST. A real compiler would get this from a
-    //    lexer/parser reading a source file; here it's the moral
-    //    equivalent of a source program that reads:
-    //
-    //        push 'H'; print; pop
-    //        push 'i'; print; pop
-    //        jump skip
-    //        push 'X'; print; pop   ; dead code -- jumped over
-    //      skip:
-    //        push '!'; print; pop
-    //        push '\n'; print; pop
-    let program = Program {
-        body: vec![
-            Stmt::Push(b'H'),
-            Stmt::Print,
-            Stmt::Pop,
-            Stmt::Print,
-            Stmt::Push(b'i'),
-            Stmt::Print,
-            Stmt::Debug(String::from(" world")),
-            Stmt::Pop,
-            Stmt::Jump("skip"),
-            Stmt::Push(b'X'), // unreachable -- jumped over, not compiled
-            Stmt::Print,
-            Stmt::Pop,
-            Stmt::Label("skip"),
-            Stmt::Push(b'!'),
-            Stmt::Print,
-            Stmt::Pop,
-            Stmt::Push(b'\n'),
-            Stmt::Print,
-            Stmt::Pop,
-        ],
-    };
-
-    // All printed strings
-    let mut string_table: Vec<u8> = Vec::new();
-    let mut debug_offsets: Vec<Option<(u64, usize)>> = Vec::with_capacity(program.body.len());
-    for stmt in &program.body {
-        match stmt {
-            Stmt::Debug(s) => {
-                let offset = string_table.len() as u64;
-                string_table.extend_from_slice(s.as_bytes());
-                debug_offsets.push(Some((offset, s.as_bytes().len())));
-            }
-            _ => debug_offsets.push(None),
+pub fn read_and_compile(filename: &String, mut automaton: String) -> Result<(), Vec<info::Error>> {
+    let Ast {
+        automata,
+        mut errors,
+    } = match load_ast(filename) {
+        Ok(ast) => ast,
+        Err(err) => {
+            return Err(vec![info::Error::Other {
+                msg: err.to_string(),
+            }])
         }
+    };
+    if automaton == "main" && automata.iter().all(|auto| auto.name.name != "main") {
+        automaton = automata[0].name.name.clone();
     }
+    let mut ir = flatten_automaton(automata, automaton.clone());
+    errors.append(&mut ir.errors);
+    if !errors.is_empty() {
+        return Err(errors);
+    } else {
+        compile(automaton, ir);
+        Ok(())
+    }
+}
 
-    // 2. Decide the whole binary's memory layout BEFORE compiling
-    //    anything. This is the trick that lets us skip relocations
-    //    entirely: every address the compiled program needs (the
-    //    trampolines, the tape) is a plain compile-time constant by the
-    //    time codegen runs, because we chose it ourselves.
-    //
-
-    //    Layout, in order: [ELF headers] [write_char] [exit] [_start] [tape] [compiled program]
+pub fn compile(name: String, ir: FAIR) {
+    //    Layout, in order: [ELF headers] [write_char] [exit] [_start] [tape] [strings] [compiled program]
     let write_char_addr = BASE_ADDR + HEADER_SIZE;
     let exit_addr = write_char_addr + WRITE_CHAR.len() as u64;
     let start_stub_addr = exit_addr + EXIT_PROCESS.len() as u64;
     let tape_addr = start_stub_addr + 17;
     let string_table_addr = tape_addr + TAPE_SIZE;
+
+    // All printed strings
+    let mut string_table: Vec<u8> = Vec::new();
+    let mut string_addrs: HashMap<String, (u64, usize)> = HashMap::new();
+    let mut strings: Vec<String> = Vec::from(["\n", "state "])
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    strings.extend(ir.transition_states.clone().into_iter());
+
+    for string in strings {
+        let offset = string_table_addr + string_table.len() as u64;
+        string_table.extend_from_slice(string.as_bytes());
+        string_addrs.insert(string.clone(), (offset, string.as_bytes().len()));
+    }
+
     let program_addr = string_table_addr + string_table.len() as u64;
 
-    let debug_addrs: Vec<Option<(u64, usize)>> = debug_offsets
-        .into_iter()
-        .map(|opt| opt.map(|(offset, len)| (string_table_addr + offset, len)))
-        .collect();
+    // println!("Layout:");
+    // println!("- trampolines: write @ {write_char_addr:#x} exit @ {exit_addr:#x} start @ {start_stub_addr:#x}");
+    // println!("- tape buffer        @ {tape_addr:#x} ({TAPE_SIZE} bytes)");
+    // println!("- string pool        @ {string_addrs:?}");
+    // println!("- compiled program   @ {program_addr:#x}\n");
 
-    println!("Layout:");
-    println!("  write_char trampoline @ {write_char_addr:#x}");
-    println!("  exit trampoline       @ {exit_addr:#x}");
-    println!("  _start                @ {start_stub_addr:#x}");
-    println!("  tape buffer           @ {tape_addr:#x} ({TAPE_SIZE} bytes)");
-    println!("  debug strings         @ {debug_addrs:?}");
-    println!("  compiled program      @ {program_addr:#x}\n");
+    // Compile the program with Cranelift
+    let compiled_program = compile_program(ir, tape_addr, write_char_addr, exit_addr, string_addrs);
 
-    // 3. Compile the program with Cranelift, now that it can bake in
-    //    those addresses as plain constants.
-    let compiled_program = compile_program(
-        &program,
-        tape_addr,
-        write_char_addr,
-        exit_addr,
-        &debug_addrs,
-    );
-    println!(
-        "Compiled program to {} bytes of machine code.\n",
-        compiled_program.len()
-    );
-
-    // 4. Assemble the final segment contents in the same order we
-    //    promised above, then hand-write the ELF wrapper around it.
+    // Assemble the final segment contents, then hand-write the ELF wrapper around it.
     let mut code = Vec::new();
     code.extend_from_slice(&WRITE_CHAR);
     code.extend_from_slice(&EXIT_PROCESS);
@@ -111,14 +82,12 @@ pub fn compile(name: String) {
 
     let elf_bytes = build_executable(&code, entry_offset);
 
-    // 5. Write the file and mark it executable (ELF files don't get +x
-    //    by default -- `fs::write` alone would leave it non-runnable).
+    // Write the file and mark it executable
     let out_path = name.as_str();
     fs::write(out_path, &elf_bytes).expect("failed to write output file");
     let mut perms = fs::metadata(out_path).unwrap().permissions();
     perms.set_mode(0o755);
     fs::set_permissions(out_path, perms).unwrap();
 
-    println!("Wrote ./{out_path} ({} bytes total).", elf_bytes.len());
-    println!("Try it now:  ./{out_path}");
+    println!("Succesfully compiled ./{out_path}");
 }

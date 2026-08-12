@@ -1,5 +1,6 @@
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::Block;
+use cranelift_codegen::ir::SigRef;
 use cranelift_codegen::ir::{
     types, AbiParam, Function, InstBuilder, MemFlags, Signature, UserFuncName,
 };
@@ -11,34 +12,13 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use std::collections::HashMap;
 use std::str::FromStr;
 
-/// Mock ast
-pub enum Stmt {
-    /// Push a byte onto the vector.
-    Push(u8),
-    /// Remove the top byte from the vector.
-    Pop,
-    /// Print the current top byte of the vector (without popping it).
-    Print,
-    /// Print a fixed string, known at compile time -- NOT read from the
-    /// vector. Useful for simple debug/trace output.
-    Debug(String),
-    /// A named jump target. Doesn't do anything by itself -- `Jump`
-    /// statements elsewhere reference it by name.
-    Label(&'static str),
-    /// Unconditionally jump to the block starting at a `Label` with this
-    /// name.
-    Jump(&'static str),
+use crate::fair::FAIR;
+
+struct LabelledWriter {
+    label_blocks: HashMap<String, Block>,
 }
 
-pub struct Program {
-    pub body: Vec<Stmt>,
-}
-
-struct LabelledWriter<'a> {
-    label_blocks: &'a HashMap<&'static str, Block>,
-}
-
-impl<'a> FuncWriter for LabelledWriter<'a> {
+impl FuncWriter for LabelledWriter {
     fn write_block_header(
         &mut self,
         w: &mut dyn std::fmt::Write,
@@ -48,7 +28,7 @@ impl<'a> FuncWriter for LabelledWriter<'a> {
     ) -> std::fmt::Result {
         cranelift_codegen::write::PlainWriter.write_block_header(w, func, block, indent)?;
         if let Some((name, _)) = self.label_blocks.iter().find(|(_, b)| **b == block) {
-            writeln!(w, "  ; label {name:?}")?;
+            writeln!(w, "; -> state {name:?}")?;
         }
         Ok(())
     }
@@ -68,175 +48,197 @@ impl<'a> FuncWriter for LabelledWriter<'a> {
     }
 }
 
-/// Compiles `program` into raw x86-64 machine code bytes
-pub fn compile_program(
-    program: &Program,
+struct CodeGen<'a> {
+    ir: FAIR,
     tape_addr: u64,
     write_char_addr: u64,
     exit_addr: u64,
-    debug_addrs: &[Option<(u64, usize)>],
+    string_addrs: HashMap<String, (u64, usize)>,
+    // for generating program bytes
+    builder: FunctionBuilder<'a>,
+    label_blocks: HashMap<String, Block>,
+    // trampolines
+    write_char_sig: SigRef,
+    exit_sig: SigRef,
+    // tape pointers
+    left: Variable,
+    right: Variable,
+}
+
+impl<'a> CodeGen<'a> {
+    // Add instructions for printing a hardcoded string, the given string must first be added to the string table
+    fn print_string(&mut self, string: &str) {
+        let (str_addr, len) = self.string_addrs[string];
+        let target = self
+            .builder
+            .ins()
+            .iconst(types::I64, self.write_char_addr as i64);
+        println!("Found state {} addr {} len {}", string, str_addr, len);
+
+        for k in 0..len as u64 {
+            let byte_addr = self.builder.ins().iconst(types::I64, (str_addr + k) as i64);
+            self.builder
+                .ins()
+                .call_indirect(self.write_char_sig, target, &[byte_addr]);
+        }
+    }
+
+    fn store_input(&mut self) {
+        let entry_block = self.builder.create_block();
+        self.builder
+            .append_block_params_for_function_params(entry_block);
+        self.builder.switch_to_block(entry_block);
+        let argv_ptr: cranelift_codegen::ir::Value = self.builder.block_params(entry_block)[0];
+
+        let zero = self.builder.ins().iconst(types::I64, 0);
+        self.builder.declare_var(self.left, types::I64);
+        self.builder.declare_var(self.right, types::I64);
+        self.builder.def_var(self.left, zero);
+        self.builder.def_var(self.right, zero);
+
+        let sp = Variable::from_u32(2);
+        self.builder.declare_var(sp, types::I64);
+        self.builder.def_var(sp, zero);
+
+        // Copy the optional argv string into the tape
+        let cursor = Variable::from_u32(3);
+        self.builder.declare_var(cursor, types::I64);
+        self.builder.def_var(cursor, argv_ptr);
+        let check_block = self.builder.create_block();
+        let copy_block = self.builder.create_block();
+        let done_block = self.builder.create_block();
+        self.builder.ins().jump(check_block, &[]);
+
+        self.builder.switch_to_block(check_block);
+        let ptr_now = self.builder.use_var(cursor);
+        let is_null = self.builder.ins().icmp_imm(IntCC::Equal, ptr_now, 0);
+        self.builder
+            .ins()
+            .brif(is_null, done_block, &[], copy_block, &[]);
+
+        self.builder.switch_to_block(copy_block);
+        let ptr_now = self.builder.use_var(cursor);
+        let byte = self
+            .builder
+            .ins()
+            .load(types::I8, MemFlags::new(), ptr_now, 0);
+        let at_end = self.builder.ins().icmp_imm(IntCC::Equal, byte, 0);
+        let store_block = self.builder.create_block();
+        self.builder
+            .ins()
+            .brif(at_end, done_block, &[], store_block, &[]);
+
+        self.builder.switch_to_block(store_block);
+        let sp_val = self.builder.use_var(sp);
+        let tape_base = self.builder.ins().iconst(types::I64, self.tape_addr as i64);
+        let tape_slot = self.builder.ins().iadd(tape_base, sp_val);
+        self.builder
+            .ins()
+            .store(MemFlags::new(), byte, tape_slot, 0);
+        let one = self.builder.ins().iconst(types::I64, 1);
+        let new_sp = self.builder.ins().iadd(sp_val, one);
+        self.builder.def_var(sp, new_sp);
+        let new_ptr = self.builder.ins().iadd(ptr_now, one);
+        self.builder.def_var(cursor, new_ptr);
+        self.builder.ins().jump(check_block, &[]);
+
+        self.builder.switch_to_block(done_block);
+    }
+
+    /// Compiles `program` into raw x86-64 machine code bytes
+    pub fn generate_labels(mut self) -> HashMap<String, Block> {
+        // Store tape input in the vector
+        self.store_input();
+
+        // Create a block for each state
+        for state in self.ir.transition_states.iter() {
+            println!("Inserted state {}", state);
+            self.label_blocks
+                .insert(state.clone(), self.builder.create_block());
+        }
+
+        // Print each state
+        let states = self
+            .ir
+            .transition_states
+            .clone()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        let target = self.label_blocks[&states[0]];
+        self.builder.ins().jump(target, &[]);
+        for i in 0..states.len() {
+            let state = &states[i];
+            let target = self.label_blocks[state];
+            self.builder.switch_to_block(target);
+
+            self.print_string("state ");
+            self.print_string(&states[i]);
+            self.print_string("\n");
+
+            if i < states.len() - 1 {
+                // jump to next state
+                let target = self.label_blocks[&states[i + 1]];
+                self.builder.ins().jump(target, &[]);
+            }
+        }
+
+        // exit program
+        let target = self.builder.ins().iconst(types::I64, self.exit_addr as i64);
+        self.builder.ins().call_indirect(self.exit_sig, target, &[]);
+        self.builder.ins().return_(&[]);
+
+        self.builder.seal_all_blocks();
+        self.builder.finalize();
+        self.label_blocks
+    }
+}
+
+pub fn compile_program(
+    ir: FAIR,
+    tape_addr: u64,
+    write_char_addr: u64,
+    exit_addr: u64,
+    string_addrs: HashMap<String, (u64, usize)>,
 ) -> Vec<u8> {
     let isa = build_x86_64_linux_isa();
 
     // The whole program compiles to a single function with one parameter that calls the exit syscall rather than returning
     let mut sig = Signature::new(CallConv::SystemV);
     sig.params.push(AbiParam::new(types::I64));
-    let mut func = Function::with_name_signature(UserFuncName::default(), sig);
-    let mut fn_ctx = FunctionBuilderContext::new();
+    let mut func: Function = Function::with_name_signature(UserFuncName::default(), sig);
+    let mut fn_ctx: FunctionBuilderContext = FunctionBuilderContext::new();
 
-    // Declared outside for decorations
-    let mut label_blocks: HashMap<&str, Block> = HashMap::new();
-    {
-        let mut builder = FunctionBuilder::new(&mut func, &mut fn_ctx);
+    let mut builder: FunctionBuilder<'_> = FunctionBuilder::new(&mut func, &mut fn_ctx);
 
-        // Signatures for the two hand-written trampolines
-        let write_char_sig = builder.import_signature({
-            let mut s = Signature::new(CallConv::SystemV);
-            s.params.push(AbiParam::new(types::I64)); // pointer to the byte
-            s
-        });
-        let exit_sig = builder.import_signature(Signature::new(CallConv::SystemV));
+    // Signatures for the two hand-written trampolines
+    let write_char_sig = builder.import_signature({
+        let mut s = Signature::new(CallConv::SystemV);
+        s.params.push(AbiParam::new(types::I64)); // pointer to the byte
+        s
+    });
+    let exit_sig = builder.import_signature(Signature::new(CallConv::SystemV));
 
-        let entry_block = builder.create_block();
-        builder.append_block_params_for_function_params(entry_block);
-        builder.switch_to_block(entry_block);
-        let argv_ptr = builder.block_params(entry_block)[0];
-
-        // tape pointer
-        let sp = Variable::from_u32(0);
-        builder.declare_var(sp, types::I64);
-        let zero = builder.ins().iconst(types::I64, 0);
-        builder.def_var(sp, zero);
-
-        // Copy the optional argv string into the tape
-        let cursor = Variable::from_u32(1);
-        builder.declare_var(cursor, types::I64);
-        builder.def_var(cursor, argv_ptr);
-
-        let check_block = builder.create_block();
-        let copy_block = builder.create_block();
-        let done_block = builder.create_block();
-        builder.ins().jump(check_block, &[]);
-
-        builder.switch_to_block(check_block);
-        let ptr_now = builder.use_var(cursor);
-        let is_null = builder.ins().icmp_imm(IntCC::Equal, ptr_now, 0);
-        builder
-            .ins()
-            .brif(is_null, done_block, &[], copy_block, &[]);
-
-        builder.switch_to_block(copy_block);
-        let ptr_now = builder.use_var(cursor);
-        let byte = builder.ins().load(types::I8, MemFlags::new(), ptr_now, 0);
-        let at_end = builder.ins().icmp_imm(IntCC::Equal, byte, 0);
-        let store_block = builder.create_block();
-        builder
-            .ins()
-            .brif(at_end, done_block, &[], store_block, &[]);
-
-        builder.switch_to_block(store_block);
-        let sp_val = builder.use_var(sp);
-        let tape_base = builder.ins().iconst(types::I64, tape_addr as i64);
-        let tape_slot = builder.ins().iadd(tape_base, sp_val);
-        builder.ins().store(MemFlags::new(), byte, tape_slot, 0);
-        let one = builder.ins().iconst(types::I64, 1);
-        let new_sp = builder.ins().iadd(sp_val, one);
-        builder.def_var(sp, new_sp);
-        let new_ptr = builder.ins().iadd(ptr_now, one);
-        builder.def_var(cursor, new_ptr);
-        builder.ins().jump(check_block, &[]);
-
-        builder.switch_to_block(done_block);
-
-        // Create a block for each state
-        for stmt in &program.body {
-            if let Stmt::Label(name) = stmt {
-                label_blocks.insert(name, builder.create_block());
-            }
-        }
-
-        // Emit instructions for state transitions
-        let mut terminated = false;
-        for (i, stmt) in program.body.iter().enumerate() {
-            match stmt {
-                Stmt::Label(name) => {
-                    let target = label_blocks[name];
-                    if !terminated {
-                        builder.ins().jump(target, &[]);
-                    }
-                    builder.switch_to_block(target);
-                    terminated = false;
-                }
-                Stmt::Jump(name) => {
-                    if !terminated {
-                        let target = label_blocks[name];
-                        builder.ins().jump(target, &[]);
-                        terminated = true;
-                    }
-                }
-                Stmt::Push(byte) if !terminated => {
-                    let sp_val = builder.use_var(sp);
-                    let tape_base = builder.ins().iconst(types::I64, tape_addr as i64);
-                    let addr = builder.ins().iadd(tape_base, sp_val);
-                    let byte_val = builder.ins().iconst(types::I8, *byte as i64);
-                    builder.ins().store(MemFlags::new(), byte_val, addr, 0);
-
-                    let one = builder.ins().iconst(types::I64, 1);
-                    let new_sp = builder.ins().iadd(sp_val, one);
-                    builder.def_var(sp, new_sp);
-                }
-                Stmt::Pop if !terminated => {
-                    let sp_val = builder.use_var(sp);
-                    let one = builder.ins().iconst(types::I64, 1);
-                    let new_sp = builder.ins().isub(sp_val, one);
-                    builder.def_var(sp, new_sp);
-                }
-                Stmt::Print if !terminated => {
-                    let sp_val = builder.use_var(sp);
-                    let one = builder.ins().iconst(types::I64, 1);
-                    let top_index = builder.ins().isub(sp_val, one);
-                    let tape_base = builder.ins().iconst(types::I64, tape_addr as i64);
-                    let addr = builder.ins().iadd(tape_base, top_index);
-
-                    let target = builder.ins().iconst(types::I64, write_char_addr as i64);
-                    builder.ins().call_indirect(write_char_sig, target, &[addr]);
-                }
-                Stmt::Debug(_) if !terminated => {
-                    let (str_addr, len) =
-                        debug_addrs[i].expect("Debug statement missing precomputed address");
-                    let target = builder.ins().iconst(types::I64, write_char_addr as i64);
-                    for k in 0..len as u64 {
-                        let byte_addr = builder.ins().iconst(types::I64, (str_addr + k) as i64);
-                        builder
-                            .ins()
-                            .call_indirect(write_char_sig, target, &[byte_addr]);
-                    }
-                }
-                // Dead code after a Jump and before the next Label --
-                // intentionally not emitted.
-                _ => {}
-            }
-        }
-
-        // If the last block fell off the end of the program without
-        // jumping anywhere, terminate it by exiting the process.
-        if !terminated {
-            let target = builder.ins().iconst(types::I64, exit_addr as i64);
-            builder.ins().call_indirect(exit_sig, target, &[]);
-            // Dead but required: Cranelift still needs a formal
-            // terminator here even though `exit` never actually returns.
-            builder.ins().return_(&[]);
-        }
-
-        builder.seal_all_blocks();
-        builder.finalize();
-    }
+    let cg = CodeGen {
+        ir,
+        tape_addr,
+        write_char_addr,
+        exit_addr,
+        string_addrs,
+        builder,
+        label_blocks: HashMap::new(),
+        write_char_sig,
+        exit_sig,
+        left: Variable::from_u32(0),
+        right: Variable::from_u32(1),
+    };
+    let label_blocks = cg.generate_labels();
 
     println!("--- Generated Cranelift IR ---");
     let mut ir_text = String::new();
     cranelift_codegen::write::decorate_function(
         &mut LabelledWriter {
-            label_blocks: &label_blocks,
+            label_blocks: label_blocks,
         },
         &mut ir_text,
         &func,
