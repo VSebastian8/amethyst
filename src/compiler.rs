@@ -11,7 +11,11 @@ use std::os::unix::fs::PermissionsExt;
 
 const TAPE_SIZE: u64 = 256;
 
-pub fn read_and_compile(filename: &String, mut automaton: String) -> Result<(), Vec<info::Error>> {
+pub fn read_and_compile(
+    filename: &String,
+    mut automaton: String,
+    debug: bool,
+) -> Result<(), Vec<info::Error>> {
     let Ast {
         automata,
         mut errors,
@@ -31,12 +35,12 @@ pub fn read_and_compile(filename: &String, mut automaton: String) -> Result<(), 
     if !errors.is_empty() {
         return Err(errors);
     } else {
-        compile(automaton, ir);
+        compile(automaton, ir, debug);
         Ok(())
     }
 }
 
-pub fn compile(name: String, ir: FAIR) {
+pub fn compile(name: String, ir: FAIR, debug: bool) {
     //    Layout, in order: [ELF headers] [write_char] [exit] [_start] [tape] [strings] [compiled program]
     let write_char_addr = BASE_ADDR + HEADER_SIZE;
     let exit_addr = write_char_addr + WRITE_CHAR.len() as u64;
@@ -47,7 +51,7 @@ pub fn compile(name: String, ir: FAIR) {
     // All printed strings
     let mut string_table: Vec<u8> = Vec::new();
     let mut string_addrs: HashMap<String, (u64, usize)> = HashMap::new();
-    let mut strings: Vec<String> = Vec::from(["\n", "state "])
+    let mut strings: Vec<String> = Vec::from(["\n", "state ", "->", "|", "@", "..", " "])
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -61,14 +65,23 @@ pub fn compile(name: String, ir: FAIR) {
 
     let program_addr = string_table_addr + string_table.len() as u64;
 
-    // println!("Layout:");
-    // println!("- trampolines: write @ {write_char_addr:#x} exit @ {exit_addr:#x} start @ {start_stub_addr:#x}");
-    // println!("- tape buffer        @ {tape_addr:#x} ({TAPE_SIZE} bytes)");
-    // println!("- string pool        @ {string_addrs:?}");
-    // println!("- compiled program   @ {program_addr:#x}\n");
+    if debug {
+        println!("Layout:");
+        println!("- trampolines: write @ {write_char_addr:#x} exit @ {exit_addr:#x} start @ {start_stub_addr:#x}");
+        println!("- tape buffer        @ {tape_addr:#x} ({TAPE_SIZE} bytes)");
+        println!("- string pool        @ {string_addrs:?}");
+        println!("- compiled program   @ {program_addr:#x}\n");
+    }
 
     // Compile the program with Cranelift
-    let compiled_program = compile_program(ir, tape_addr, write_char_addr, exit_addr, string_addrs);
+    let compiled_program = compile_program(
+        ir,
+        tape_addr,
+        write_char_addr,
+        exit_addr,
+        string_addrs,
+        debug,
+    );
 
     // Assemble the final segment contents, then hand-write the ELF wrapper around it.
     let mut code = Vec::new();

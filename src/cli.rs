@@ -15,9 +15,6 @@ const STYLES: styling::Styles = styling::Styles::styled()
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
-    /// Verbosity level
-    #[arg(long, short, default_value = "0")]
-    pub verbosity: i32,
 }
 
 #[derive(Subcommand, Debug)]
@@ -39,6 +36,9 @@ pub enum Command {
             hide_default_value = true
         )]
         tape: String,
+        /// Verbosity level
+        #[arg(long, short, default_value = "0")]
+        verbosity: i32,
     },
     /// Checks that the input file is correct
     #[command(aliases=["t"])]
@@ -76,5 +76,11 @@ pub enum Command {
         /// Maximum tape size
         #[arg(long, short, default_value = "256")]
         memory: usize,
+        /// Verbosity level
+        #[arg(long, short, default_value = "0")]
+        verbosity: i32,
+        /// Prints debug information
+        #[arg(long, short)]
+        debug: bool,
     },
 }

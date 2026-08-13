@@ -87,9 +87,11 @@ fn main() {
             input,
             start,
             memory: _,
+            verbosity: _,
+            debug,
         } => {
             // Compile the amethyst code and report possible errors
-            if let Err(errors) = read_and_compile(&input, start) {
+            if let Err(errors) = read_and_compile(&input, start, debug) {
                 println!("Compiling file {} failed, encountered errors:", input);
                 for e in errors {
                     e.print_context();
