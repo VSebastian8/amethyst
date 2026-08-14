@@ -54,6 +54,7 @@ pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
         .iter()
         .map(|s| s.to_string())
         .collect();
+    strings.push(format!("Memory limit {} exceeded!\n", memory));
     strings.extend(ir.transition_states.clone().into_iter());
 
     for string in strings {

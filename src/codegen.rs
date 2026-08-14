@@ -261,6 +261,53 @@ impl<'a> CodeGen<'a> {
         self.builder.switch_to_block(done_block);
     }
 
+    fn write(&mut self, symbol: char) {
+        let empty_block = self.builder.create_block();
+        let write_block = self.builder.create_block();
+        // If right stack is empty, push a new value, otherwise rewrite top value
+        let right_val = self.builder.use_var(self.right);
+        let end_val = self.builder.use_var(self.end);
+        let right_empty = self.builder.ins().icmp(IntCC::Equal, right_val, end_val);
+        self.builder
+            .ins()
+            .brif(right_empty, empty_block, &[], write_block, &[]);
+
+        self.builder.switch_to_block(empty_block);
+        self.dec_var(self.right);
+        self.builder.ins().jump(write_block, &[]);
+
+        self.builder.switch_to_block(write_block);
+        let symbol_val = self.builder.ins().iconst(types::I8, symbol as i64);
+        let right_val = self.builder.use_var(self.right);
+        self.builder
+            .ins()
+            .store(MemFlags::new(), symbol_val, right_val, self.tape_addr);
+    }
+
+    // Both stacks are empty => overflow
+    fn check_memory(&mut self) {
+        let exit_block = self.builder.create_block();
+        let done_block = self.builder.create_block();
+        // Check stacks
+        let left_val = self.builder.use_var(self.left);
+        let right_val = self.builder.use_var(self.right);
+        let start_val = self.builder.use_var(self.start);
+        let end_val = self.builder.use_var(self.end);
+        let left_empty = self.builder.ins().icmp(IntCC::Equal, left_val, start_val);
+        let right_empty = self.builder.ins().icmp(IntCC::Equal, right_val, end_val);
+        let zero = self.builder.ins().iconst(types::I8, 0);
+        let overflow = self.builder.ins().select(left_empty, right_empty, zero);
+        self.builder
+            .ins()
+            .brif(overflow, exit_block, &[], done_block, &[]);
+        self.builder.switch_to_block(exit_block);
+        self.print_string(&format!("Memory limit {} exceeded!\n", self.memory));
+        let target = self.builder.ins().iconst(types::I64, self.exit_addr as i64);
+        self.builder.ins().call_indirect(self.exit_sig, target, &[]);
+        self.builder.ins().return_(&[]);
+        self.builder.switch_to_block(done_block);
+    }
+
     fn store_input(&mut self) {
         let entry_block = self.builder.create_block();
         self.builder
@@ -349,11 +396,23 @@ impl<'a> CodeGen<'a> {
         self.store_input();
         self.print_tape();
         self.move_left();
+        self.check_memory();
+        self.write('D');
+        self.print_tape();
         self.move_right();
         self.move_right();
+        self.write('N');
+        self.print_tape();
         self.move_right();
+        self.check_memory();
+        self.print_tape();
         self.move_right();
+        self.write('E');
+        self.print_tape();
         self.move_right();
+        self.check_memory();
+        self.write('E');
+        self.print_tape();
         self.move_left();
         // Create a block for each state
         for state in self.ir.transition_states.iter() {
