@@ -9,11 +9,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
-const TAPE_SIZE: u64 = 256;
-
 pub fn read_and_compile(
     filename: &String,
     mut automaton: String,
+    memory: u64,
     debug: bool,
 ) -> Result<(), Vec<info::Error>> {
     let Ast {
@@ -35,18 +34,18 @@ pub fn read_and_compile(
     if !errors.is_empty() {
         return Err(errors);
     } else {
-        compile(automaton, ir, debug);
+        compile(automaton, ir, memory, debug);
         Ok(())
     }
 }
 
-pub fn compile(name: String, ir: FAIR, debug: bool) {
+pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
     //    Layout, in order: [ELF headers] [write_char] [exit] [_start] [tape] [strings] [compiled program]
     let write_char_addr = BASE_ADDR + HEADER_SIZE;
     let exit_addr = write_char_addr + WRITE_CHAR.len() as u64;
     let start_stub_addr = exit_addr + EXIT_PROCESS.len() as u64;
     let tape_addr = start_stub_addr + 17;
-    let string_table_addr = tape_addr + TAPE_SIZE;
+    let string_table_addr = tape_addr + memory;
 
     // All printed strings
     let mut string_table: Vec<u8> = Vec::new();
@@ -68,7 +67,7 @@ pub fn compile(name: String, ir: FAIR, debug: bool) {
     if debug {
         println!("Layout:");
         println!("- trampolines: write @ {write_char_addr:#x} exit @ {exit_addr:#x} start @ {start_stub_addr:#x}");
-        println!("- tape buffer        @ {tape_addr:#x} ({TAPE_SIZE} bytes)");
+        println!("- tape buffer        @ {tape_addr:#x} ({memory} bytes)");
         println!("- string pool        @ {string_addrs:?}");
         println!("- compiled program   @ {program_addr:#x}\n");
     }
@@ -76,6 +75,7 @@ pub fn compile(name: String, ir: FAIR, debug: bool) {
     // Compile the program with Cranelift
     let compiled_program = compile_program(
         ir,
+        memory,
         tape_addr,
         write_char_addr,
         exit_addr,
@@ -89,7 +89,7 @@ pub fn compile(name: String, ir: FAIR, debug: bool) {
     code.extend_from_slice(&EXIT_PROCESS);
     let entry_offset = code.len() as u64; // _start begins here -- this is the real ELF entry point
     code.extend_from_slice(&start_stub(program_addr));
-    code.extend(std::iter::repeat(0u8).take(TAPE_SIZE as usize)); // zeroed tape
+    code.extend(std::iter::repeat(0u8).take(memory as usize)); // zeroed tape
     code.extend_from_slice(&string_table); // literal debug-string bytes
     code.extend_from_slice(&compiled_program);
 

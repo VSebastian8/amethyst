@@ -86,12 +86,12 @@ fn main() {
         Command::Compile {
             input,
             start,
-            memory: _,
+            memory,
             verbosity: _,
             debug,
         } => {
             // Compile the amethyst code and report possible errors
-            if let Err(errors) = read_and_compile(&input, start, debug) {
+            if let Err(errors) = read_and_compile(&input, start, memory as u64, debug) {
                 println!("Compiling file {} failed, encountered errors:", input);
                 for e in errors {
                     e.print_context();

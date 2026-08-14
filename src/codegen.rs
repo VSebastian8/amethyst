@@ -50,7 +50,8 @@ impl FuncWriter for LabelledWriter {
 
 struct CodeGen<'a> {
     ir: FAIR,
-    tape_addr: u64,
+    memory: u64,
+    tape_addr: i32,
     write_char_addr: u64,
     exit_addr: u64,
     string_addrs: HashMap<String, (u64, usize)>,
@@ -86,6 +87,32 @@ impl<'a> CodeGen<'a> {
         }
     }
 
+    // var = (var + 1) % TAPE_SIZE
+    fn inc_var(&mut self, var: Variable) {
+        let val = self.builder.use_var(var);
+        let at_max = self
+            .builder
+            .ins()
+            .icmp_imm(IntCC::Equal, val, self.memory as i64 - 1);
+        let plus_one = self.builder.ins().iadd_imm(val, 1);
+        let zero = self.builder.ins().iconst(types::I64, 0);
+        let wrapped = self.builder.ins().select(at_max, zero, plus_one);
+        self.builder.def_var(var, wrapped);
+    }
+
+    // var = (var - 1) % TAPE_SIZE
+    fn dec_var(&mut self, var: Variable) {
+        let val = self.builder.use_var(var);
+        let at_zero = self.builder.ins().icmp_imm(IntCC::Equal, val, 0);
+        let minus_one = self.builder.ins().iadd_imm(val, -1);
+        let tape_end = self
+            .builder
+            .ins()
+            .iconst(types::I64, self.memory as i64 - 1);
+        let wrapped = self.builder.ins().select(at_zero, tape_end, minus_one);
+        self.builder.def_var(var, wrapped);
+    }
+
     // Add instructions for printing the tape content
     fn print_tape(&mut self) {
         // Blocks
@@ -96,7 +123,6 @@ impl<'a> CodeGen<'a> {
         let right_print_block = self.builder.create_block();
         let right_done_block = self.builder.create_block();
         // Invariants
-        let one = self.builder.ins().iconst(types::I64, 1);
         let tape_base = self.builder.ins().iconst(types::I64, self.tape_addr as i64);
         let write_target = self
             .builder
@@ -107,10 +133,16 @@ impl<'a> CodeGen<'a> {
         self.print_string("@");
 
         let start_val = self.builder.use_var(self.start);
-        let first_val = self.builder.ins().iadd(start_val, one);
-        self.builder.def_var(self.index, first_val);
+        self.builder.def_var(self.index, start_val);
+        self.inc_var(self.index);
         let left_val = self.builder.use_var(self.left);
-        let limit_val = self.builder.ins().iadd(left_val, one);
+        let at_max = self
+            .builder
+            .ins()
+            .icmp_imm(IntCC::Equal, left_val, self.memory as i64 - 1);
+        let plus_one = self.builder.ins().iadd_imm(left_val, 1);
+        let zero = self.builder.ins().iconst(types::I64, 0);
+        let limit_val = self.builder.ins().select(at_max, zero, plus_one);
         self.builder.ins().jump(left_check_block, &[]);
 
         // Left stack
@@ -127,8 +159,7 @@ impl<'a> CodeGen<'a> {
         self.builder
             .ins()
             .call_indirect(self.write_char_sig, write_target, &[addr]);
-        let new_index = self.builder.ins().iadd(index_val, one);
-        self.builder.def_var(self.index, new_index);
+        self.inc_var(self.index);
         self.builder.ins().jump(left_check_block, &[]);
 
         self.builder.switch_to_block(left_done_block);
@@ -151,14 +182,83 @@ impl<'a> CodeGen<'a> {
             .ins()
             .call_indirect(self.write_char_sig, write_target, &[addr]);
         self.print_string("|");
-        let new_index = self.builder.ins().iadd(index_val, one);
-        self.builder.def_var(self.index, new_index);
+        self.inc_var(self.index);
         self.builder.ins().jump(right_check_block, &[]);
 
         self.builder.switch_to_block(right_done_block);
         self.print_string("@");
         self.print_string("..");
         self.print_string("\n");
+    }
+
+    fn move_left(&mut self) {
+        let blank_block = self.builder.create_block();
+        let sym_block = self.builder.create_block();
+        let done_block = self.builder.create_block();
+        // right--
+        self.dec_var(self.right);
+        let right_val = self.builder.use_var(self.right);
+        // check whether left == start
+        let left_val = self.builder.use_var(self.left);
+        let start_val = self.builder.use_var(self.start);
+        let left_blank = self.builder.ins().icmp(IntCC::Equal, left_val, start_val);
+        self.builder
+            .ins()
+            .brif(left_blank, blank_block, &[], sym_block, &[]);
+        // Produce a @ and don't move left
+        self.builder.switch_to_block(blank_block);
+        let blank = self.builder.ins().iconst(types::I8, '@' as i64);
+        self.builder
+            .ins()
+            .store(MemFlags::new(), blank, right_val, self.tape_addr);
+        self.builder.ins().jump(done_block, &[]);
+        // Move actual symbol and left--
+        self.builder.switch_to_block(sym_block);
+        let symbol = self
+            .builder
+            .ins()
+            .load(types::I8, MemFlags::new(), left_val, self.tape_addr);
+        self.builder
+            .ins()
+            .store(MemFlags::new(), symbol, right_val, self.tape_addr);
+        self.dec_var(self.left);
+        self.builder.ins().jump(done_block, &[]);
+        self.builder.switch_to_block(done_block);
+    }
+
+    fn move_right(&mut self) {
+        let blank_block = self.builder.create_block();
+        let sym_block = self.builder.create_block();
+        let done_block = self.builder.create_block();
+        // left++
+        self.inc_var(self.left);
+        let left_val = self.builder.use_var(self.left);
+        // check whether right == end
+        let right_val = self.builder.use_var(self.right);
+        let end_val = self.builder.use_var(self.end);
+        let right_blank = self.builder.ins().icmp(IntCC::Equal, right_val, end_val);
+        self.builder
+            .ins()
+            .brif(right_blank, blank_block, &[], sym_block, &[]);
+        // Produce a @ and don't move right
+        self.builder.switch_to_block(blank_block);
+        let blank = self.builder.ins().iconst(types::I8, '@' as i64);
+        self.builder
+            .ins()
+            .store(MemFlags::new(), blank, left_val, self.tape_addr);
+        self.builder.ins().jump(done_block, &[]);
+        // Move actual symbol and right++
+        self.builder.switch_to_block(sym_block);
+        let symbol = self
+            .builder
+            .ins()
+            .load(types::I8, MemFlags::new(), right_val, self.tape_addr);
+        self.builder
+            .ins()
+            .store(MemFlags::new(), symbol, left_val, self.tape_addr);
+        self.inc_var(self.right);
+        self.builder.ins().jump(done_block, &[]);
+        self.builder.switch_to_block(done_block);
     }
 
     fn store_input(&mut self) {
@@ -248,6 +348,13 @@ impl<'a> CodeGen<'a> {
         // Store tape input in the vector
         self.store_input();
         self.print_tape();
+        self.move_left();
+        self.move_right();
+        self.move_right();
+        self.move_right();
+        self.move_right();
+        self.move_right();
+        self.move_left();
         // Create a block for each state
         for state in self.ir.transition_states.iter() {
             self.label_blocks
@@ -294,6 +401,7 @@ impl<'a> CodeGen<'a> {
 
 pub fn compile_program(
     ir: FAIR,
+    memory: u64,
     tape_addr: u64,
     write_char_addr: u64,
     exit_addr: u64,
@@ -320,7 +428,8 @@ pub fn compile_program(
 
     let cg = CodeGen {
         ir,
-        tape_addr,
+        memory,
+        tape_addr: tape_addr as i32,
         write_char_addr,
         exit_addr,
         string_addrs,
