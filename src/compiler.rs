@@ -50,12 +50,26 @@ pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
     // All printed strings
     let mut string_table: Vec<u8> = Vec::new();
     let mut string_addrs: HashMap<String, (u64, usize)> = HashMap::new();
-    let mut strings: Vec<String> = Vec::from(["\n", "state ", "->", "|", "@", "..", " "])
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut strings: Vec<String> = Vec::from([
+        "\n",
+        "->",
+        "|",
+        "@",
+        "..",
+        " ",
+        "State ",
+        "Accepted by final state ",
+        "Rejected by final state ",
+        "Invalid character `",
+        "` in input!",
+    ])
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
     strings.push(format!("Memory limit {} exceeded!\n", memory));
     strings.extend(ir.transition_states.clone().into_iter());
+    strings.extend(ir.accept_states.clone().into_iter());
+    strings.extend(ir.reject_states.clone().into_iter());
 
     for string in strings {
         let offset = string_table_addr + string_table.len() as u64;

@@ -2,7 +2,7 @@ use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::Block;
 use cranelift_codegen::ir::SigRef;
 use cranelift_codegen::ir::{
-    types, AbiParam, Function, InstBuilder, MemFlags, Signature, UserFuncName,
+    types, AbiParam, Function, InstBuilder, MemFlags, Signature, UserFuncName, Value,
 };
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings::{self, Configurable};
@@ -12,6 +12,7 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use crate::ast::Move;
 use crate::fair::FAIR;
 
 struct LabelledWriter {
@@ -72,6 +73,16 @@ struct CodeGen<'a> {
 }
 
 impl<'a> CodeGen<'a> {
+    fn declare_vars(&mut self) {
+        self.builder.declare_var(self.left, types::I64);
+        self.builder.declare_var(self.right, types::I64);
+        self.builder.declare_var(self.start, types::I64);
+        self.builder.declare_var(self.end, types::I64);
+        self.builder.declare_var(self.cursor, types::I64);
+        self.builder.declare_var(self.index, types::I64);
+        self.builder.declare_var(self.cells, types::I64);
+    }
+
     // Add instructions for printing a hardcoded string, the given string must first be added to the string table
     fn print_string(&mut self, string: &str) {
         let (str_addr, len) = self.string_addrs[string];
@@ -93,7 +104,7 @@ impl<'a> CodeGen<'a> {
         self.builder.def_var(var, plus_one);
     }
 
-    // var = (var + 1) % TAPE_SIZE
+    // var = (var + 1) % memory
     fn inc_var(&mut self, var: Variable) {
         let val = self.builder.use_var(var);
         let at_max = self
@@ -106,7 +117,7 @@ impl<'a> CodeGen<'a> {
         self.builder.def_var(var, wrapped);
     }
 
-    // var = (var - 1) % TAPE_SIZE
+    // var = (var - 1) % memory
     fn dec_var(&mut self, var: Variable) {
         let val = self.builder.use_var(var);
         let at_zero = self.builder.ins().icmp_imm(IntCC::Equal, val, 0);
@@ -117,6 +128,123 @@ impl<'a> CodeGen<'a> {
             .iconst(types::I64, self.memory as i64 - 1);
         let wrapped = self.builder.ins().select(at_zero, tape_end, minus_one);
         self.builder.def_var(var, wrapped);
+    }
+
+    fn entry(&mut self) {
+        let entry_block = self.builder.create_block();
+        self.builder
+            .append_block_params_for_function_params(entry_block);
+        self.builder.switch_to_block(entry_block);
+        let argv_ptr: cranelift_codegen::ir::Value = self.builder.block_params(entry_block)[0];
+        let zero = self.builder.ins().iconst(types::I64, 0);
+        // Init tape pointers
+        self.builder.def_var(self.right, zero);
+        self.builder.def_var(self.start, zero);
+        self.builder.def_var(self.cells, zero);
+        self.builder.def_var(self.cursor, argv_ptr);
+    }
+
+    fn store_input(&mut self) {
+        // Invariants
+        let zero = self.builder.ins().iconst(types::I64, 0);
+        let one = self.builder.ins().iconst(types::I64, 1);
+        let blank = self.builder.ins().iconst(types::I8, '@' as i64);
+        // Start with a @ for the case of no input
+        self.builder
+            .ins()
+            .store(MemFlags::new(), blank, zero, self.tape_addr);
+        // Copy the optional argv string into the tape
+        let check_block = self.builder.create_block();
+        let copy_block = self.builder.create_block();
+        let validate_block = self.builder.create_block();
+        let invalid_block = self.builder.create_block();
+        let store_block = self.builder.create_block();
+        let done_block = self.builder.create_block();
+
+        self.builder.ins().jump(check_block, &[]);
+        self.builder.switch_to_block(check_block);
+        let ptr_now = self.builder.use_var(self.cursor);
+        let is_null = self.builder.ins().icmp_imm(IntCC::Equal, ptr_now, 0);
+        self.builder
+            .ins()
+            .brif(is_null, done_block, &[], copy_block, &[]);
+
+        self.builder.switch_to_block(copy_block);
+        let ptr_now = self.builder.use_var(self.cursor);
+        let byte = self
+            .builder
+            .ins()
+            .load(types::I8, MemFlags::new(), ptr_now, 0);
+        let at_end = self.builder.ins().icmp_imm(IntCC::Equal, byte, 0);
+        self.builder
+            .ins()
+            .brif(at_end, done_block, &[], validate_block, &[]);
+
+        // Input character must be one of  A-Z | 0-9 | @ | &
+        self.builder.switch_to_block(validate_block);
+        let is_amp = self.builder.ins().icmp_imm(IntCC::Equal, byte, '&' as i64);
+        let is_digit_lo =
+            self.builder
+                .ins()
+                .icmp_imm(IntCC::SignedGreaterThanOrEqual, byte, '0' as i64);
+        let is_digit_hi =
+            self.builder
+                .ins()
+                .icmp_imm(IntCC::SignedLessThanOrEqual, byte, '9' as i64);
+        let is_digit = self.builder.ins().band(is_digit_lo, is_digit_hi);
+        let is_at = self.builder.ins().icmp_imm(IntCC::Equal, byte, '@' as i64);
+        let is_alpha_lo =
+            self.builder
+                .ins()
+                .icmp_imm(IntCC::SignedGreaterThanOrEqual, byte, 'A' as i64);
+        let is_alpha_hi =
+            self.builder
+                .ins()
+                .icmp_imm(IntCC::SignedLessThanOrEqual, byte, 'Z' as i64);
+        let is_alpha = self.builder.ins().band(is_alpha_lo, is_alpha_hi);
+        let valid = self.builder.ins().bor(is_amp, is_digit);
+        let valid = self.builder.ins().bor(valid, is_at);
+        let valid = self.builder.ins().bor(valid, is_alpha);
+        self.builder
+            .ins()
+            .brif(valid, store_block, &[], invalid_block, &[]);
+
+        self.builder.switch_to_block(invalid_block);
+        let write_target = self
+            .builder
+            .ins()
+            .iconst(types::I64, self.write_str_addr as i64);
+        self.print_string("Invalid character `");
+        self.builder
+            .ins()
+            .call_indirect(self.write_sig, write_target, &[ptr_now, one]);
+        self.print_string("` in input!");
+        self.print_string("\n");
+        let target = self.builder.ins().iconst(types::I64, self.exit_addr as i64);
+        self.builder.ins().call_indirect(self.exit_sig, target, &[]);
+        self.builder.ins().return_(&[]);
+
+        self.builder.switch_to_block(store_block);
+        let start_val = self.builder.use_var(self.start);
+        self.builder
+            .ins()
+            .store(MemFlags::new(), byte, start_val, self.tape_addr);
+        // Move start and cursor to the right
+        self.plus_var(self.start);
+        self.plus_var(self.cursor);
+        self.builder.ins().jump(check_block, &[]);
+
+        self.builder.switch_to_block(done_block);
+        // Set start = max(0, start - 1)
+        let start_val = self.builder.use_var(self.start);
+        self.builder.def_var(self.cells, start_val);
+        let minus_one = self.builder.ins().isub(start_val, one);
+        let new_start = self.builder.ins().smax(minus_one, zero);
+        self.builder.def_var(self.start, new_start);
+        // Set left = start & end = start + 1
+        self.builder.def_var(self.left, new_start);
+        let new_end = self.builder.ins().iadd(new_start, one);
+        self.builder.def_var(self.end, new_end);
     }
 
     // Add instructions for printing the tape content
@@ -198,6 +326,28 @@ impl<'a> CodeGen<'a> {
         self.print_string("\n");
     }
 
+    // cells >= memory => overflow
+    fn check_memory(&mut self) {
+        let exit_block = self.builder.create_block();
+        let done_block = self.builder.create_block();
+        // Check stacks
+        let cells_val = self.builder.use_var(self.cells);
+        let overflow = self.builder.ins().icmp_imm(
+            IntCC::UnsignedGreaterThanOrEqual,
+            cells_val,
+            self.memory as i64,
+        );
+        self.builder
+            .ins()
+            .brif(overflow, exit_block, &[], done_block, &[]);
+        self.builder.switch_to_block(exit_block);
+        self.print_string(&format!("Memory limit {} exceeded!\n", self.memory));
+        let target = self.builder.ins().iconst(types::I64, self.exit_addr as i64);
+        self.builder.ins().call_indirect(self.exit_sig, target, &[]);
+        self.builder.ins().return_(&[]);
+        self.builder.switch_to_block(done_block);
+    }
+
     fn move_left(&mut self) {
         let blank_block = self.builder.create_block();
         let sym_block = self.builder.create_block();
@@ -220,6 +370,7 @@ impl<'a> CodeGen<'a> {
             .store(MemFlags::new(), blank, right_val, self.tape_addr);
         // new cell has been used
         self.plus_var(self.cells);
+        self.check_memory();
         self.builder.ins().jump(done_block, &[]);
         // Move actual symbol and left--
         self.builder.switch_to_block(sym_block);
@@ -257,6 +408,7 @@ impl<'a> CodeGen<'a> {
             .store(MemFlags::new(), blank, left_val, self.tape_addr);
         // new cell has been used
         self.plus_var(self.cells);
+        self.check_memory();
         self.builder.ins().jump(done_block, &[]);
         // Move actual symbol and right++
         self.builder.switch_to_block(sym_block);
@@ -287,6 +439,7 @@ impl<'a> CodeGen<'a> {
         self.dec_var(self.right);
         // new cell has been used
         self.plus_var(self.cells);
+        self.check_memory();
         self.builder.ins().jump(write_block, &[]);
 
         self.builder.switch_to_block(write_block);
@@ -297,173 +450,145 @@ impl<'a> CodeGen<'a> {
             .store(MemFlags::new(), symbol_val, right_val, self.tape_addr);
     }
 
-    // Both stacks are empty => overflow
-    fn check_memory(&mut self) {
-        let exit_block = self.builder.create_block();
+    fn read(&mut self) -> Value {
+        let read_block = self.builder.create_block();
+        let blank_block = self.builder.create_block();
         let done_block = self.builder.create_block();
-        // Check stacks
-        let cells_val = self.builder.use_var(self.cells);
-        let overflow = self.builder.ins().icmp_imm(
-            IntCC::UnsignedGreaterThanOrEqual,
-            cells_val,
-            self.memory as i64,
-        );
+        self.builder.append_block_param(done_block, types::I8);
+        // If right stack is empty, read @, otherwise read top value
+        let right_val = self.builder.use_var(self.right);
+        let end_val = self.builder.use_var(self.end);
+        let right_empty = self.builder.ins().icmp(IntCC::Equal, right_val, end_val);
         self.builder
             .ins()
-            .brif(overflow, exit_block, &[], done_block, &[]);
-        self.builder.switch_to_block(exit_block);
-        self.print_string(&format!("Memory limit {} exceeded!\n", self.memory));
-        let target = self.builder.ins().iconst(types::I64, self.exit_addr as i64);
-        self.builder.ins().call_indirect(self.exit_sig, target, &[]);
-        self.builder.ins().return_(&[]);
-        self.builder.switch_to_block(done_block);
-    }
-
-    fn declare_vars(&mut self) {
-        self.builder.declare_var(self.left, types::I64);
-        self.builder.declare_var(self.right, types::I64);
-        self.builder.declare_var(self.start, types::I64);
-        self.builder.declare_var(self.end, types::I64);
-        self.builder.declare_var(self.cursor, types::I64);
-        self.builder.declare_var(self.index, types::I64);
-        self.builder.declare_var(self.cells, types::I64);
-    }
-
-    fn store_input(&mut self) {
-        let entry_block = self.builder.create_block();
-        self.builder
-            .append_block_params_for_function_params(entry_block);
-        self.builder.switch_to_block(entry_block);
-        let argv_ptr: cranelift_codegen::ir::Value = self.builder.block_params(entry_block)[0];
-
-        // Invariants
-        let zero = self.builder.ins().iconst(types::I64, 0);
-        let one = self.builder.ins().iconst(types::I64, 1);
+            .brif(right_empty, blank_block, &[], read_block, &[]);
+        // @
+        self.builder.switch_to_block(blank_block);
         let blank = self.builder.ins().iconst(types::I8, '@' as i64);
-        let tape_base = self.builder.ins().iconst(types::I64, self.tape_addr as i64);
-
-        // Init tape pointers
-        self.builder.def_var(self.right, zero);
-        self.builder.def_var(self.start, zero);
-        self.builder.def_var(self.cells, zero);
-        self.builder.def_var(self.cursor, argv_ptr);
-
-        // Start with a @ for the case of no input
-        self.builder
-            .ins()
-            .store(MemFlags::new(), blank, tape_base, 0);
-
-        // Copy the optional argv string into the tape
-        let check_block = self.builder.create_block();
-        let copy_block = self.builder.create_block();
-        let store_block = self.builder.create_block();
-        let done_block = self.builder.create_block();
-
-        self.builder.ins().jump(check_block, &[]);
-        self.builder.switch_to_block(check_block);
-        let ptr_now = self.builder.use_var(self.cursor);
-        let is_null = self.builder.ins().icmp_imm(IntCC::Equal, ptr_now, 0);
-        self.builder
-            .ins()
-            .brif(is_null, done_block, &[], copy_block, &[]);
-
-        self.builder.switch_to_block(copy_block);
-        let ptr_now = self.builder.use_var(self.cursor);
-        let byte = self
+        self.builder.ins().jump(done_block, &[blank]);
+        // top right stack symbol
+        self.builder.switch_to_block(read_block);
+        let right_val = self.builder.use_var(self.right);
+        let symbol = self
             .builder
             .ins()
-            .load(types::I8, MemFlags::new(), ptr_now, 0);
-        let at_end = self.builder.ins().icmp_imm(IntCC::Equal, byte, 0);
-        self.builder
-            .ins()
-            .brif(at_end, done_block, &[], store_block, &[]);
-
-        self.builder.switch_to_block(store_block);
-        let start_val = self.builder.use_var(self.start);
-        self.builder
-            .ins()
-            .store(MemFlags::new(), byte, start_val, self.tape_addr);
-        // Move start and cursor to the right
-        self.plus_var(self.start);
-        self.plus_var(self.cursor);
-        self.builder.ins().jump(check_block, &[]);
-
+            .load(types::I8, MemFlags::new(), right_val, self.tape_addr);
+        self.builder.ins().jump(done_block, &[symbol]);
+        // Return the value as a block parameter
         self.builder.switch_to_block(done_block);
-        // Set start = max(0, start - 1)
-        let start_val = self.builder.use_var(self.start);
-        self.builder.def_var(self.cells, start_val);
-        let minus_one = self.builder.ins().isub(start_val, one);
-        let new_start = self.builder.ins().smax(minus_one, zero);
-        self.builder.def_var(self.start, new_start);
-        // Set left = start & end = start + 1
-        self.builder.def_var(self.left, new_start);
-        let new_end = self.builder.ins().iadd(new_start, one);
-        self.builder.def_var(self.end, new_end);
+        self.builder.block_params(done_block)[0]
+    }
+
+    fn transition_case(
+        &mut self,
+        read_symbol: char,
+        write_symbol: char,
+        move_symbol: Move,
+        new_state: String,
+    ) {
+        let match_block = self.builder.create_block();
+        let next_block = self.builder.create_block();
+        // Check if transition applies
+        let read_val = self.builder.ins().iconst(types::I8, read_symbol as i64);
+        let tape_val = self.read();
+        let symbol_match = self.builder.ins().icmp(IntCC::Equal, read_val, tape_val);
+        self.builder
+            .ins()
+            .brif(symbol_match, match_block, &[], next_block, &[]);
+        // Apply transition
+        self.builder.switch_to_block(match_block);
+        if write_symbol != '_' {
+            self.write(write_symbol);
+        }
+        match move_symbol {
+            Move::L => {
+                self.move_left();
+            }
+            Move::R => {
+                self.move_right();
+            }
+            Move::N => {}
+        }
+        self.builder.ins().jump(self.label_blocks[&new_state], &[]);
+        // Skip transition
+        self.builder.switch_to_block(next_block);
+    }
+
+    fn transition_default(&mut self, write_symbol: char, move_symbol: Move, new_state: String) {
+        if write_symbol != '_' {
+            self.write(write_symbol);
+        }
+        match move_symbol {
+            Move::L => {
+                self.move_left();
+            }
+            Move::R => {
+                self.move_right();
+            }
+            Move::N => {}
+        }
+        self.builder.ins().jump(self.label_blocks[&new_state], &[]);
     }
 
     /// Compiles `program` into raw x86-64 machine code bytes
     pub fn generate_labels(mut self) -> HashMap<String, Block> {
-        // Store tape input in the vector
+        let init_block = self.builder.create_block();
+        let exit_block = self.builder.create_block();
         self.declare_vars();
+        // Store tape input in the vector
+        self.entry();
         self.store_input();
-        self.print_tape();
-        self.move_left();
-        self.check_memory();
-        self.write('D');
-        self.print_tape();
-        self.move_right();
-        self.move_right();
-        self.write('N');
-        self.print_tape();
-
-        self.move_right();
-        self.check_memory();
-        self.print_tape();
-
-        self.move_right();
-        self.check_memory();
-        self.write('E');
-        self.check_memory();
-        self.print_tape();
-
-        self.move_right();
-        self.check_memory();
-        self.write('E');
-        self.print_tape();
-        self.move_left();
+        self.builder.ins().jump(init_block, &[]);
         // Create a block for each state
-        for state in self.ir.transition_states.iter() {
-            self.label_blocks
-                .insert(state.clone(), self.builder.create_block());
-        }
-
-        // Print each state
-        let states = self
-            .ir
-            .transition_states
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>();
-
-        let target = self.label_blocks[&states[0]];
-        self.builder.ins().jump(target, &[]);
-        for i in 0..states.len() {
-            let state = &states[i];
-            let target = self.label_blocks[state];
-            self.builder.switch_to_block(target);
-
-            self.print_string("state ");
-            self.print_string(&states[i]);
+        for state in self.ir.accept_states.clone() {
+            let block = self.builder.create_block();
+            self.label_blocks.insert(state.clone(), block);
+            self.builder.switch_to_block(block);
+            self.print_string("Accepted by final state ");
+            self.print_string(&state);
             self.print_string("\n");
-
-            if i < states.len() - 1 {
-                // jump to next state
-                let target = self.label_blocks[&states[i + 1]];
-                self.builder.ins().jump(target, &[]);
-            }
+            self.builder.ins().jump(exit_block, &[]);
         }
+        for state in self.ir.reject_states.clone() {
+            let block = self.builder.create_block();
+            self.label_blocks.insert(state.clone(), block);
+            self.builder.switch_to_block(block);
+            self.print_string("Rejected by final state ");
+            self.print_string(&state);
+            self.print_string("\n");
+            self.builder.ins().jump(exit_block, &[]);
+        }
+        // First create state blocks without transitions, in order to reference them later
+        for state in self.ir.transition_states.iter() {
+            let block = self.builder.create_block();
+            self.label_blocks.insert(state.clone(), block);
+        }
+        for (state, transitions) in self.ir.transitions.clone() {
+            self.builder.switch_to_block(self.label_blocks[&state]);
+            self.print_string("State ");
+            self.print_string(&state);
+            self.print_string("\n");
+            // Default case
+            let (write_symbol, move_symbol, new_state) = transitions[&'_'].clone();
+            // Other cases
+            for (read_symbol, (write_symbol, move_symbol, new_state)) in transitions {
+                if read_symbol != '_' {
+                    self.transition_case(read_symbol, write_symbol, move_symbol, new_state);
+                }
+            }
+            // If nothing else matched, apply catch-all transition
+            self.transition_default(write_symbol, move_symbol, new_state);
+        }
+
+        self.builder.switch_to_block(init_block);
+        self.print_tape();
+        let initial_state = self.ir.initial_states.values().next().unwrap();
+        self.builder
+            .ins()
+            .jump(self.label_blocks[initial_state], &[]);
 
         // exit program
+        self.builder.switch_to_block(exit_block);
         self.print_tape();
         let target = self.builder.ins().iconst(types::I64, self.exit_addr as i64);
         self.builder.ins().call_indirect(self.exit_sig, target, &[]);
