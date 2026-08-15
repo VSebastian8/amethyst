@@ -52,39 +52,45 @@ struct CodeGen<'a> {
     ir: FAIR,
     memory: u64,
     tape_addr: i32,
-    write_char_addr: u64,
+    write_str_addr: u64,
     exit_addr: u64,
     string_addrs: HashMap<String, (u64, usize)>,
     // for generating program bytes
     builder: FunctionBuilder<'a>,
     label_blocks: HashMap<String, Block>,
     // trampolines
-    write_char_sig: SigRef,
+    write_sig: SigRef,
     exit_sig: SigRef,
     // tape pointers
     left: Variable,
     right: Variable,
     start: Variable,
     end: Variable,
+    cursor: Variable,
     index: Variable,
+    cells: Variable,
 }
 
 impl<'a> CodeGen<'a> {
     // Add instructions for printing a hardcoded string, the given string must first be added to the string table
-    // TODO: Optimization for single char?
     fn print_string(&mut self, string: &str) {
         let (str_addr, len) = self.string_addrs[string];
+        let ptr = self.builder.ins().iconst(types::I64, str_addr as i64);
+        let len_val = self.builder.ins().iconst(types::I64, len as i64);
         let target = self
             .builder
             .ins()
-            .iconst(types::I64, self.write_char_addr as i64);
+            .iconst(types::I64, self.write_str_addr as i64);
+        self.builder
+            .ins()
+            .call_indirect(self.write_sig, target, &[ptr, len_val]);
+    }
 
-        for k in 0..len as u64 {
-            let byte_addr = self.builder.ins().iconst(types::I64, (str_addr + k) as i64);
-            self.builder
-                .ins()
-                .call_indirect(self.write_char_sig, target, &[byte_addr]);
-        }
+    // var = var + 1
+    fn plus_var(&mut self, var: Variable) {
+        let val = self.builder.use_var(var);
+        let plus_one = self.builder.ins().iadd_imm(val, 1);
+        self.builder.def_var(var, plus_one);
     }
 
     // var = (var + 1) % TAPE_SIZE
@@ -127,7 +133,7 @@ impl<'a> CodeGen<'a> {
         let write_target = self
             .builder
             .ins()
-            .iconst(types::I64, self.write_char_addr as i64);
+            .iconst(types::I64, self.write_str_addr as i64);
 
         self.print_string("..");
         self.print_string("@");
@@ -142,6 +148,7 @@ impl<'a> CodeGen<'a> {
             .icmp_imm(IntCC::Equal, left_val, self.memory as i64 - 1);
         let plus_one = self.builder.ins().iadd_imm(left_val, 1);
         let zero = self.builder.ins().iconst(types::I64, 0);
+        let one = self.builder.ins().iconst(types::I64, 1);
         let limit_val = self.builder.ins().select(at_max, zero, plus_one);
         self.builder.ins().jump(left_check_block, &[]);
 
@@ -158,7 +165,7 @@ impl<'a> CodeGen<'a> {
         let addr = self.builder.ins().iadd(tape_base, index_val);
         self.builder
             .ins()
-            .call_indirect(self.write_char_sig, write_target, &[addr]);
+            .call_indirect(self.write_sig, write_target, &[addr, one]);
         self.inc_var(self.index);
         self.builder.ins().jump(left_check_block, &[]);
 
@@ -180,7 +187,7 @@ impl<'a> CodeGen<'a> {
         let addr = self.builder.ins().iadd(tape_base, index_val);
         self.builder
             .ins()
-            .call_indirect(self.write_char_sig, write_target, &[addr]);
+            .call_indirect(self.write_sig, write_target, &[addr, one]);
         self.print_string("|");
         self.inc_var(self.index);
         self.builder.ins().jump(right_check_block, &[]);
@@ -211,6 +218,8 @@ impl<'a> CodeGen<'a> {
         self.builder
             .ins()
             .store(MemFlags::new(), blank, right_val, self.tape_addr);
+        // new cell has been used
+        self.plus_var(self.cells);
         self.builder.ins().jump(done_block, &[]);
         // Move actual symbol and left--
         self.builder.switch_to_block(sym_block);
@@ -246,6 +255,8 @@ impl<'a> CodeGen<'a> {
         self.builder
             .ins()
             .store(MemFlags::new(), blank, left_val, self.tape_addr);
+        // new cell has been used
+        self.plus_var(self.cells);
         self.builder.ins().jump(done_block, &[]);
         // Move actual symbol and right++
         self.builder.switch_to_block(sym_block);
@@ -274,6 +285,8 @@ impl<'a> CodeGen<'a> {
 
         self.builder.switch_to_block(empty_block);
         self.dec_var(self.right);
+        // new cell has been used
+        self.plus_var(self.cells);
         self.builder.ins().jump(write_block, &[]);
 
         self.builder.switch_to_block(write_block);
@@ -289,14 +302,12 @@ impl<'a> CodeGen<'a> {
         let exit_block = self.builder.create_block();
         let done_block = self.builder.create_block();
         // Check stacks
-        let left_val = self.builder.use_var(self.left);
-        let right_val = self.builder.use_var(self.right);
-        let start_val = self.builder.use_var(self.start);
-        let end_val = self.builder.use_var(self.end);
-        let left_empty = self.builder.ins().icmp(IntCC::Equal, left_val, start_val);
-        let right_empty = self.builder.ins().icmp(IntCC::Equal, right_val, end_val);
-        let zero = self.builder.ins().iconst(types::I8, 0);
-        let overflow = self.builder.ins().select(left_empty, right_empty, zero);
+        let cells_val = self.builder.use_var(self.cells);
+        let overflow = self.builder.ins().icmp_imm(
+            IntCC::UnsignedGreaterThanOrEqual,
+            cells_val,
+            self.memory as i64,
+        );
         self.builder
             .ins()
             .brif(overflow, exit_block, &[], done_block, &[]);
@@ -306,6 +317,16 @@ impl<'a> CodeGen<'a> {
         self.builder.ins().call_indirect(self.exit_sig, target, &[]);
         self.builder.ins().return_(&[]);
         self.builder.switch_to_block(done_block);
+    }
+
+    fn declare_vars(&mut self) {
+        self.builder.declare_var(self.left, types::I64);
+        self.builder.declare_var(self.right, types::I64);
+        self.builder.declare_var(self.start, types::I64);
+        self.builder.declare_var(self.end, types::I64);
+        self.builder.declare_var(self.cursor, types::I64);
+        self.builder.declare_var(self.index, types::I64);
+        self.builder.declare_var(self.cells, types::I64);
     }
 
     fn store_input(&mut self) {
@@ -322,13 +343,10 @@ impl<'a> CodeGen<'a> {
         let tape_base = self.builder.ins().iconst(types::I64, self.tape_addr as i64);
 
         // Init tape pointers
-        self.builder.declare_var(self.left, types::I64);
-        self.builder.declare_var(self.right, types::I64);
-        self.builder.declare_var(self.start, types::I64);
-        self.builder.declare_var(self.end, types::I64);
-        self.builder.declare_var(self.index, types::I64);
         self.builder.def_var(self.right, zero);
         self.builder.def_var(self.start, zero);
+        self.builder.def_var(self.cells, zero);
+        self.builder.def_var(self.cursor, argv_ptr);
 
         // Start with a @ for the case of no input
         self.builder
@@ -336,10 +354,6 @@ impl<'a> CodeGen<'a> {
             .store(MemFlags::new(), blank, tape_base, 0);
 
         // Copy the optional argv string into the tape
-        let cursor = Variable::from_u32(5);
-        self.builder.declare_var(cursor, types::I64);
-        self.builder.def_var(cursor, argv_ptr);
-
         let check_block = self.builder.create_block();
         let copy_block = self.builder.create_block();
         let store_block = self.builder.create_block();
@@ -347,14 +361,14 @@ impl<'a> CodeGen<'a> {
 
         self.builder.ins().jump(check_block, &[]);
         self.builder.switch_to_block(check_block);
-        let ptr_now = self.builder.use_var(cursor);
+        let ptr_now = self.builder.use_var(self.cursor);
         let is_null = self.builder.ins().icmp_imm(IntCC::Equal, ptr_now, 0);
         self.builder
             .ins()
             .brif(is_null, done_block, &[], copy_block, &[]);
 
         self.builder.switch_to_block(copy_block);
-        let ptr_now = self.builder.use_var(cursor);
+        let ptr_now = self.builder.use_var(self.cursor);
         let byte = self
             .builder
             .ins()
@@ -366,21 +380,18 @@ impl<'a> CodeGen<'a> {
 
         self.builder.switch_to_block(store_block);
         let start_val = self.builder.use_var(self.start);
-        let tape_slot = self.builder.ins().iadd(tape_base, start_val);
         self.builder
             .ins()
-            .store(MemFlags::new(), byte, tape_slot, 0);
-        // Move start to the right
-        let new_start = self.builder.ins().iadd(start_val, one);
-        self.builder.def_var(self.start, new_start);
-        // Move cursor to the right
-        let new_ptr = self.builder.ins().iadd(ptr_now, one);
-        self.builder.def_var(cursor, new_ptr);
+            .store(MemFlags::new(), byte, start_val, self.tape_addr);
+        // Move start and cursor to the right
+        self.plus_var(self.start);
+        self.plus_var(self.cursor);
         self.builder.ins().jump(check_block, &[]);
 
         self.builder.switch_to_block(done_block);
         // Set start = max(0, start - 1)
         let start_val = self.builder.use_var(self.start);
+        self.builder.def_var(self.cells, start_val);
         let minus_one = self.builder.ins().isub(start_val, one);
         let new_start = self.builder.ins().smax(minus_one, zero);
         self.builder.def_var(self.start, new_start);
@@ -393,6 +404,7 @@ impl<'a> CodeGen<'a> {
     /// Compiles `program` into raw x86-64 machine code bytes
     pub fn generate_labels(mut self) -> HashMap<String, Block> {
         // Store tape input in the vector
+        self.declare_vars();
         self.store_input();
         self.print_tape();
         self.move_left();
@@ -403,12 +415,17 @@ impl<'a> CodeGen<'a> {
         self.move_right();
         self.write('N');
         self.print_tape();
+
         self.move_right();
         self.check_memory();
         self.print_tape();
+
         self.move_right();
+        self.check_memory();
         self.write('E');
+        self.check_memory();
         self.print_tape();
+
         self.move_right();
         self.check_memory();
         self.write('E');
@@ -462,7 +479,7 @@ pub fn compile_program(
     ir: FAIR,
     memory: u64,
     tape_addr: u64,
-    write_char_addr: u64,
+    write_str_addr: u64,
     exit_addr: u64,
     string_addrs: HashMap<String, (u64, usize)>,
     debug: bool,
@@ -478,9 +495,10 @@ pub fn compile_program(
     let mut builder: FunctionBuilder<'_> = FunctionBuilder::new(&mut func, &mut fn_ctx);
 
     // Signatures for the two hand-written trampolines
-    let write_char_sig = builder.import_signature({
+    let write_sig = builder.import_signature({
         let mut s = Signature::new(CallConv::SystemV);
-        s.params.push(AbiParam::new(types::I64)); // pointer to the byte
+        s.params.push(AbiParam::new(types::I64)); // ptr
+        s.params.push(AbiParam::new(types::I64)); // len
         s
     });
     let exit_sig = builder.import_signature(Signature::new(CallConv::SystemV));
@@ -489,18 +507,20 @@ pub fn compile_program(
         ir,
         memory,
         tape_addr: tape_addr as i32,
-        write_char_addr,
+        write_str_addr,
         exit_addr,
         string_addrs,
         builder,
         label_blocks: HashMap::new(),
-        write_char_sig,
+        write_sig,
         exit_sig,
         left: Variable::from_u32(0),
         right: Variable::from_u32(1),
         start: Variable::from_u32(2),
         end: Variable::from_u32(3),
-        index: Variable::from_u32(4),
+        cursor: Variable::from_u32(4),
+        index: Variable::from_u32(5),
+        cells: Variable::from_u32(6),
     };
     let label_blocks = cg.generate_labels();
     if debug {

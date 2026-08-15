@@ -41,8 +41,8 @@ pub fn read_and_compile(
 
 pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
     //    Layout, in order: [ELF headers] [write_char] [exit] [_start] [tape] [strings] [compiled program]
-    let write_char_addr = BASE_ADDR + HEADER_SIZE;
-    let exit_addr = write_char_addr + WRITE_CHAR.len() as u64;
+    let write_str_addr = BASE_ADDR + HEADER_SIZE;
+    let exit_addr = write_str_addr + WRITE_STR.len() as u64;
     let start_stub_addr = exit_addr + EXIT_PROCESS.len() as u64;
     let tape_addr = start_stub_addr + 17;
     let string_table_addr = tape_addr + memory;
@@ -67,7 +67,7 @@ pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
 
     if debug {
         println!("Layout:");
-        println!("- trampolines: write @ {write_char_addr:#x} exit @ {exit_addr:#x} start @ {start_stub_addr:#x}");
+        println!("- trampolines: write @ {write_str_addr:#x} exit @ {exit_addr:#x} start @ {start_stub_addr:#x}");
         println!("- tape buffer        @ {tape_addr:#x} ({memory} bytes)");
         println!("- string pool        @ {string_addrs:?}");
         println!("- compiled program   @ {program_addr:#x}\n");
@@ -78,7 +78,7 @@ pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
         ir,
         memory,
         tape_addr,
-        write_char_addr,
+        write_str_addr,
         exit_addr,
         string_addrs,
         debug,
@@ -86,7 +86,7 @@ pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
 
     // Assemble the final segment contents, then hand-write the ELF wrapper around it.
     let mut code = Vec::new();
-    code.extend_from_slice(&WRITE_CHAR);
+    code.extend_from_slice(&WRITE_STR);
     code.extend_from_slice(&EXIT_PROCESS);
     let entry_offset = code.len() as u64; // _start begins here -- this is the real ELF entry point
     code.extend_from_slice(&start_stub(program_addr));
