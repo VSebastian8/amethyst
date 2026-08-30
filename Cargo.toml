@@ -29,5 +29,6 @@ cranelift-codegen = "0.105"
 cranelift-frontend = "0.105"
 target-lexicon = "0.12"
 indexmap = "=2.2.6"
+thiserror = "2.0.20"
 [profile.release]
 opt-level = 1

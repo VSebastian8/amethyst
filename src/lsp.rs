@@ -245,7 +245,7 @@ fn error_diagnostic(err: &info::Error) -> Option<Diagnostic> {
             },
         },
         severity: Some(DiagnosticSeverity::ERROR),
-        message: err.message(),
+        message: err.to_string(),
         ..Default::default()
     }
     .into()
