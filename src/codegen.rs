@@ -10,13 +10,14 @@ use cranelift_codegen::write::{FuncWriter, PlainWriter};
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::str::FromStr;
 
 use crate::ast::Move;
 use crate::fair::FAIR;
 
 struct LabelledWriter {
-    label_blocks: HashMap<String, Block>,
+    label_blocks: HashMap<Rc<str>, Block>,
 }
 
 impl FuncWriter for LabelledWriter {
@@ -55,10 +56,10 @@ struct CodeGen<'a> {
     tape_addr: i32,
     write_str_addr: u64,
     exit_addr: u64,
-    string_addrs: HashMap<String, (u64, usize)>,
+    string_addrs: HashMap<Rc<str>, (u64, usize)>,
     // for generating program bytes
     builder: FunctionBuilder<'a>,
-    label_blocks: HashMap<String, Block>,
+    label_blocks: HashMap<Rc<str>, Block>,
     // trampolines
     write_sig: SigRef,
     exit_sig: SigRef,
@@ -484,7 +485,7 @@ impl<'a> CodeGen<'a> {
         read_symbol: char,
         write_symbol: char,
         move_symbol: Move,
-        new_state: String,
+        new_state: Rc<str>,
     ) {
         let match_block = self.builder.create_block();
         let next_block = self.builder.create_block();
@@ -514,7 +515,7 @@ impl<'a> CodeGen<'a> {
         self.builder.switch_to_block(next_block);
     }
 
-    fn transition_default(&mut self, write_symbol: char, move_symbol: Move, new_state: String) {
+    fn transition_default(&mut self, write_symbol: char, move_symbol: Move, new_state: Rc<str>) {
         if write_symbol != '_' {
             self.write(write_symbol);
         }
@@ -531,7 +532,7 @@ impl<'a> CodeGen<'a> {
     }
 
     /// Compiles `program` into raw x86-64 machine code bytes
-    pub fn generate_labels(mut self) -> HashMap<String, Block> {
+    pub fn generate_labels(mut self) -> HashMap<Rc<str>, Block> {
         let init_block = self.builder.create_block();
         let exit_block = self.builder.create_block();
         self.declare_vars();
@@ -606,7 +607,7 @@ pub fn compile_program(
     tape_addr: u64,
     write_str_addr: u64,
     exit_addr: u64,
-    string_addrs: HashMap<String, (u64, usize)>,
+    string_addrs: HashMap<Rc<str>, (u64, usize)>,
     debug: bool,
 ) -> Vec<u8> {
     let isa = build_x86_64_linux_isa();

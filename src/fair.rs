@@ -1,15 +1,16 @@
 use crate::ast::*;
 use crate::info::*;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 // Flattened Automata Intermediate Representation (component desugaring)
 #[derive(Debug, Clone)]
 pub struct FAIR {
-    pub initial_states: HashMap<String, String>,
-    pub transition_states: HashSet<String>,
-    pub accept_states: HashSet<String>,
-    pub reject_states: HashSet<String>,
-    pub transitions: HashMap<String, HashMap<char, (char, Move, String)>>,
+    pub initial_states: HashMap<Rc<str>, Rc<str>>,
+    pub transition_states: HashSet<Rc<str>>,
+    pub accept_states: HashSet<Rc<str>>,
+    pub reject_states: HashSet<Rc<str>>,
+    pub transitions: HashMap<Rc<str>, HashMap<char, (char, Move, Rc<str>)>>,
     pub errors: Vec<Error>,
 }
 
@@ -28,51 +29,50 @@ impl FAIR {
     // Adding a transition, checking the new state exists
     fn add_transition(
         &mut self,
-        prefix: &String,
-        from_state: &String,
-        comps_input: &HashMap<String, String>,
+        prefix: &Rc<str>,
+        from_state: &Rc<str>,
+        comps_input: &HashMap<Rc<str>, Rc<str>>,
         t: &Transition,
     ) {
         let StringInfo { name, info } = &t.state.0;
-        let state = match &t.state.1 {
+        let state: Rc<str> = match &t.state.1 {
             Some(StringInfo {
                 name: comp,
                 info: cinfo,
-            }) => {
-                format!(
-                    "{}{}.{}",
-                    prefix,
-                    comp,
-                    if name == "input" {
-                        if !comps_input.contains_key(comp) {
-                            self.errors.push(Error::Unknown {
-                                typ: "component alias".to_string(),
-                                found: comp.clone(),
-                                info: cinfo.clone(),
-                            });
-                            return;
-                        }
-                        &comps_input[comp]
-                    } else {
-                        name
+            }) => format!(
+                "{}{}.{}",
+                prefix,
+                comp,
+                if name.as_ref() == "input" {
+                    if !comps_input.contains_key(comp) {
+                        self.errors.push(Error::Unknown {
+                            typ: "component alias".into(),
+                            found: comp.clone(),
+                            info: cinfo.clone(),
+                        });
+                        return;
                     }
-                )
-            }
+                    &comps_input[comp]
+                } else {
+                    name
+                }
+            ),
             None => format!("{}{}", prefix, name),
-        };
+        }
+        .into();
         // println!("Adding transition {:?} with state {:?}", t, state);
         if !self.transition_states.contains(&state)
             && !self.accept_states.contains(&state)
             && !self.reject_states.contains(&state)
         {
             self.errors.push(Error::Unknown {
-                typ: "state".to_string(),
+                typ: "state".into(),
                 found: state,
                 info: info.clone(),
             });
             return;
         }
-        let from = format!("{}{}", prefix, from_state);
+        let from = format!("{}{}", prefix, from_state).into();
         let state_trans = self.transitions.entry(from).or_insert(HashMap::new());
         if state_trans.contains_key(&t.read) {
             println!(
@@ -85,14 +85,14 @@ impl FAIR {
     }
 
     // ensure state does not appear before
-    fn unique_state(&mut self, prefix: &String, state: &StringInfo) {
-        let name = format!("{}{}", prefix, state.name);
+    fn unique_state(&mut self, prefix: &Rc<str>, state: &StringInfo) {
+        let name = format!("{}{}", prefix, state.name).into();
         if self.accept_states.contains(&name)
             || self.reject_states.contains(&name)
             || self.transition_states.contains(&name)
         {
             self.errors.push(Error::Defined {
-                typ: "State".to_string(),
+                typ: "State".into(),
                 name,
                 info: state.info.clone(),
             })
@@ -100,7 +100,7 @@ impl FAIR {
     }
 
     // without transitions or rewriting component states
-    fn add_shallow_state(&mut self, prefix: &String, state: &State) {
+    fn add_shallow_state(&mut self, prefix: &Rc<str>, state: &State) {
         // Insert component states in full state
         match &state.typ {
             StateType::State(component, _, _) if component.is_some() => return,
@@ -108,7 +108,7 @@ impl FAIR {
         }
         self.unique_state(prefix, &state.name);
         let StringInfo { name, .. } = state.name.clone();
-        let state_name = format!("{}{}", prefix, name);
+        let state_name = format!("{}{}", prefix, name).into();
         match &state.typ {
             StateType::Accept => {
                 self.accept_states.insert(state_name);
@@ -125,12 +125,12 @@ impl FAIR {
 
     fn add_blueprint_state(
         &mut self,
-        prefix: &String,
+        prefix: &Rc<str>,
         state: &StringInfo,
         blueprint: &StringInfo,
         transitions: &Vec<Transition>,
-        comps_input: &HashMap<String, String>,
-        comps_output: &HashMap<String, Vec<(String, bool)>>,
+        comps_input: &HashMap<Rc<str>, Rc<str>>,
+        comps_output: &HashMap<Rc<str>, Vec<(Rc<str>, bool)>>,
     ) {
         let StringInfo { name, info } = state;
         let StringInfo {
@@ -140,32 +140,32 @@ impl FAIR {
         // Check that component exists
         if !comps_input.contains_key(comp) {
             self.errors.push(Error::Unknown {
-                typ: "component alias".to_string(),
+                typ: "component alias".into(),
                 found: comp.clone(),
                 info: cinfo.clone(),
             });
             return;
         }
         // Check that state doesn't already exist (unless final) TODO: Think about this?
-        let state_name = format!("{}{}.{}", prefix, comp, name);
+        let state_name: Rc<str> = format!("{}{}.{}", prefix, comp, name).into();
         if self.transition_states.contains(&state_name) {
             self.errors.push(Error::Defined {
-                typ: "State".to_string(),
+                typ: "State".into(),
                 name: state_name.clone(),
                 info: info.clone(),
             });
             return;
         }
         // Handle special syntax for component states
-        match name.as_str() {
+        match name.as_ref() {
             "accept" | "reject" | "output" => {
                 // Rewrite final states of the component
                 comps_output[comp].iter().for_each(|(st, acc)| {
                     // Skip accepting/rejecting states when the component's sign differs
-                    if (name == "accept" && !*acc) || (name == "reject" && *acc) {
+                    if (name.as_ref() == "accept" && !*acc) || (name.as_ref() == "reject" && *acc) {
                         return;
                     }
-                    let rewritten_state = format!("{}{}.{}", prefix, comp, st);
+                    let rewritten_state = format!("{}{}.{}", prefix, comp, st).into();
                     if *acc {
                         self.accept_states.remove(&rewritten_state);
                     } else {
@@ -173,7 +173,12 @@ impl FAIR {
                     }
                     self.transition_states.insert(rewritten_state);
                     transitions.iter().for_each(|t| {
-                        self.add_transition(prefix, &format!("{}.{}", comp, st), comps_input, t)
+                        self.add_transition(
+                            prefix,
+                            &format!("{}.{}", comp, st).into(),
+                            comps_input,
+                            t,
+                        )
                     });
                 })
             }
@@ -181,7 +186,7 @@ impl FAIR {
                 // Only rewrite final states
                 if comps_output[comp].iter().all(|(st, _)| st != name) {
                     self.errors.push(Error::NotAllowed {
-                        reason: "Rewriting non-final blueprint states".to_string(),
+                        reason: "Rewriting non-final blueprint states".into(),
                         info: info.clone(),
                     });
                     return;
@@ -190,7 +195,12 @@ impl FAIR {
                 self.reject_states.remove(&state_name);
                 self.transition_states.insert(state_name);
                 transitions.iter().for_each(|t| {
-                    self.add_transition(prefix, &format!("{}.{}", comp, name), comps_input, t)
+                    self.add_transition(
+                        prefix,
+                        &format!("{}.{}", comp, name).into(),
+                        comps_input,
+                        t,
+                    )
                 });
             }
         }
@@ -199,10 +209,10 @@ impl FAIR {
     // with transitions
     fn add_full_state(
         &mut self,
-        prefix: &String,
+        prefix: &Rc<str>,
         state: &State,
-        comps_input: &HashMap<String, String>,
-        comps_output: &HashMap<String, Vec<(String, bool)>>,
+        comps_input: &HashMap<Rc<str>, Rc<str>>,
+        comps_output: &HashMap<Rc<str>, Vec<(Rc<str>, bool)>>,
     ) {
         let StringInfo { name, .. } = state.name.clone();
         if let StateType::State(component, _initial, transitions) = &state.typ {
@@ -228,13 +238,13 @@ impl FAIR {
     fn validate_automaton(
         &mut self,
         automaton: &StringInfo,
-        automata: &HashMap<String, &Automaton>,
-        visited: &HashSet<String>,
+        automata: &HashMap<Rc<str>, &Automaton>,
+        visited: &HashSet<Rc<str>>,
     ) -> Option<()> {
         let StringInfo { name, info } = automaton;
         if !automata.contains_key(name) {
             self.errors.push(Error::Unknown {
-                typ: "automaton".to_string(),
+                typ: "automaton".into(),
                 found: name.clone(),
                 info: info.clone(),
             });
@@ -242,7 +252,7 @@ impl FAIR {
         }
         if visited.contains(name) {
             self.errors.push(Error::Cycle {
-                typ: "component".to_string(),
+                typ: "component".into(),
                 name: name.clone(),
                 info: info.clone(),
             });
@@ -250,7 +260,7 @@ impl FAIR {
         }
         if self.initial_states.contains_key(name) {
             self.errors.push(Error::Defined {
-                typ: "Automaton".to_string(),
+                typ: "Automaton".into(),
                 name: name.clone(),
                 info: info.clone(),
             })
@@ -262,17 +272,17 @@ impl FAIR {
     fn add_automaton(
         &mut self,
         automaton: &StringInfo,
-        automata: &HashMap<String, &Automaton>,
-        visited: &mut HashSet<String>,
-        prefix: &String,
-    ) -> Option<(String, Vec<(String, bool)>)> {
+        automata: &HashMap<Rc<str>, &Automaton>,
+        visited: &mut HashSet<Rc<str>>,
+        prefix: &Rc<str>,
+    ) -> Option<(Rc<str>, Vec<(Rc<str>, bool)>)> {
         self.validate_automaton(automaton, automata, visited)?;
         let StringInfo { name, info } = automaton;
         visited.insert(name.clone());
         // Recursively add components
-        let mut comps_input: HashMap<String, String> = HashMap::new();
-        let mut comps_output: HashMap<String, Vec<(String, bool)>> = HashMap::new();
-        let mut aliases: HashSet<String> = HashSet::new();
+        let mut comps_input: HashMap<Rc<str>, Rc<str>> = HashMap::new();
+        let mut comps_output: HashMap<Rc<str>, Vec<(Rc<str>, bool)>> = HashMap::new();
+        let mut aliases: HashSet<Rc<str>> = HashSet::new();
         for (
             auto,
             StringInfo {
@@ -283,16 +293,19 @@ impl FAIR {
         {
             if aliases.contains(comp) {
                 self.errors.push(Error::Defined {
-                    typ: "Alias".to_string(),
+                    typ: "Alias".into(),
                     name: comp.clone(),
                     info: cinfo.clone(),
                 });
                 continue;
             }
             aliases.insert(comp.clone());
-            if let Some((comp_input, mut comp_outputs)) =
-                self.add_automaton(&auto, automata, visited, &format!("{}{}.", prefix, comp))
-            {
+            if let Some((comp_input, mut comp_outputs)) = self.add_automaton(
+                &auto,
+                automata,
+                visited,
+                &format!("{}{}.", prefix, comp).into(),
+            ) {
                 comps_input.insert(comp.clone(), comp_input);
                 comps_output
                     .entry(comp.clone())
@@ -319,10 +332,10 @@ impl FAIR {
             })
             .collect();
         // Check initial state validity
-        let mut initial_state: Option<String> = None;
+        let mut initial_state: Option<Rc<str>> = None;
         if automata[name].states.is_empty() {
             self.errors.push(Error::NotAllowed {
-                reason: "Automaton without states".to_string(),
+                reason: "Automaton without states".into(),
                 info: info.clone(),
             });
         }
@@ -331,7 +344,7 @@ impl FAIR {
                 if comp.is_none() {
                     if initial_state.is_some() {
                         self.errors.push(Error::NotAllowed {
-                            reason: "Having multiple initial states".to_string(),
+                            reason: "Having multiple initial states".into(),
                             info: state.name.info.clone(),
                         });
                     } else {
@@ -339,7 +352,7 @@ impl FAIR {
                     }
                 } else {
                     self.errors.push(Error::NotAllowed {
-                        reason: "Marking component state as initial".to_string(),
+                        reason: "Marking component state as initial".into(),
                         info: state.name.info.clone(),
                     });
                 }
@@ -364,7 +377,7 @@ fn add_sink_states(automata: &mut Vec<Automaton>) {
                             mov: Move::N,
                             state: (
                                 StringInfo {
-                                    name: "sink".to_string(),
+                                    name: "sink".into(),
                                     info: automaton.name.info.clone(),
                                 },
                                 None,
@@ -379,11 +392,11 @@ fn add_sink_states(automata: &mut Vec<Automaton>) {
         if sink {
             automaton.states.push(State {
                 name: StringInfo {
-                    name: "sink".to_string(),
+                    name: "sink".into(),
                     info: automaton.name.info.clone(),
                 },
                 typ: StateType::Reject,
-                desc: "generated sink state".to_string(),
+                desc: "generated sink state".into(),
             });
         }
     }
@@ -402,18 +415,18 @@ pub fn flatten_automata(mut program: Vec<Automaton>) -> FAIR {
             &automaton.name,
             &automata,
             &mut visited,
-            &format!("{}.", automaton.name.name),
+            &format!("{}.", automaton.name.name).into(),
         ) {
             ir.initial_states.insert(
                 automaton.name.name.clone(),
-                format!("{}.{}", automaton.name.name, initial),
+                format!("{}.{}", automaton.name.name, initial).into(),
             );
         }
     }
     ir
 }
 
-pub fn flatten_automaton(mut program: Vec<Automaton>, automaton: String) -> FAIR {
+pub fn flatten_automaton(mut program: Vec<Automaton>, automaton: Rc<str>) -> FAIR {
     add_sink_states(&mut program);
     let mut visited = HashSet::new();
     let automata: HashMap<_, _> = program
@@ -426,14 +439,14 @@ pub fn flatten_automaton(mut program: Vec<Automaton>, automaton: String) -> FAIR
             &automata[&automaton].name,
             &automata,
             &mut visited,
-            &"".to_string(),
+            &"".into(),
         ) {
             ir.initial_states
                 .insert(automata[&automaton].name.name.clone(), initial);
         }
     } else {
         ir.errors.push(Error::Other {
-            msg: format!("Unknown starting automaton {}", automaton),
+            msg: format!("Unknown starting automaton {}", automaton).into(),
         });
     }
     ir
@@ -469,33 +482,33 @@ mod tests {
                             },
                         ],
                     ),
-                    desc: String::new(),
+                    desc: "".into(),
                 },
                 State {
                     name: StringInfo::from("good"),
                     typ: StateType::Accept,
-                    desc: "accepting state".to_string(),
+                    desc: "accepting state".into(),
                 },
                 State {
                     name: StringInfo::from("bad"),
                     typ: StateType::Reject,
-                    desc: "rejecting state".to_string(),
+                    desc: "rejecting state".into(),
                 },
             ],
-            desc: String::new(),
+            desc: "".into(),
         }];
         let result = flatten_automata(program);
         assert_eq!(result.initial_states.len(), 1);
-        assert_eq!(result.initial_states["main"], "main.first".to_string());
-        assert!(result.transition_states.contains(&"main.first".to_string()));
-        assert!(result.accept_states.contains(&"main.good".to_string()));
-        assert!(result.reject_states.contains(&"main.bad".to_string()));
+        assert_eq!(result.initial_states["main"], "main.first".into());
+        assert!(result.transition_states.contains("main.first"));
+        assert!(result.accept_states.contains("main.good"));
+        assert!(result.reject_states.contains("main.bad"));
         assert!(result.transitions.contains_key("main.first"));
         assert_eq!(
             result.transitions["main.first"],
             HashMap::from([
-                ('0', ('A', Move::L, "main.good".to_string())),
-                ('_', ('B', Move::R, "main.bad".to_string()))
+                ('0', ('A', Move::L, "main.good".into())),
+                ('_', ('B', Move::R, "main.bad".into()))
             ])
         );
     }
@@ -519,15 +532,15 @@ mod tests {
                                 state: (StringInfo::from("q1"), None),
                             }],
                         ),
-                        desc: "simple state".to_string(),
+                        desc: "simple state".into(),
                     },
                     State {
                         name: StringInfo::from("q1"),
                         typ: StateType::Accept,
-                        desc: "final state".to_string(),
+                        desc: "final state".into(),
                     },
                 ],
-                desc: "move\none\ncell".to_string(),
+                desc: "move\none\ncell".into(),
             },
             Automaton {
                 name: StringInfo::from("add"),
@@ -553,7 +566,7 @@ mod tests {
                                 },
                             ],
                         ),
-                        desc: String::new(),
+                        desc: "".into(),
                     },
                     State {
                         name: StringInfo::from("q1"),
@@ -575,20 +588,20 @@ mod tests {
                                 },
                             ],
                         ),
-                        desc: String::new(),
+                        desc: "".into(),
                     },
                     State {
                         name: StringInfo::from("done"),
                         typ: StateType::Accept,
-                        desc: String::new(),
+                        desc: "".into(),
                     },
                     State {
                         name: StringInfo::from("ups"),
                         typ: StateType::Reject,
-                        desc: "upsie".to_string(),
+                        desc: "upsie".into(),
                     },
                 ],
-                desc: "some complicated machine".to_string(),
+                desc: "some complicated machine".into(),
             },
             Automaton {
                 name: StringInfo::from("main"),
@@ -623,7 +636,7 @@ mod tests {
                                 },
                             ],
                         ),
-                        desc: "this state is pretty cool huh".to_string(),
+                        desc: "this state is pretty cool huh".into(),
                     },
                     State {
                         name: StringInfo::from("output"),
@@ -637,7 +650,7 @@ mod tests {
                                 state: (StringInfo::from("finally"), None),
                             }],
                         ),
-                        desc: String::new(),
+                        desc: "".into(),
                     },
                     State {
                         name: StringInfo::from("accept"),
@@ -651,7 +664,7 @@ mod tests {
                                 state: (StringInfo::from("finally"), None),
                             }],
                         ),
-                        desc: "all accepting state of component a2".to_string(),
+                        desc: "all accepting state of component a2".into(),
                     },
                     State {
                         name: StringInfo::from("reject"),
@@ -665,20 +678,20 @@ mod tests {
                                 state: (StringInfo::from("double_ups"), None),
                             }],
                         ),
-                        desc: String::new(),
+                        desc: "".into(),
                     },
                     State {
                         name: StringInfo::from("finally"),
                         typ: StateType::Accept,
-                        desc: String::new(),
+                        desc: "".into(),
                     },
                     State {
                         name: StringInfo::from("double_ups"),
                         typ: StateType::Reject,
-                        desc: "you really messed up".to_string(),
+                        desc: "you really messed up".into(),
                     },
                 ],
-                desc: "turing machines are cool".to_string(),
+                desc: "turing machines are cool".into(),
             },
         ];
         let ir = flatten_automata(program);
@@ -686,145 +699,145 @@ mod tests {
         assert_eq!(
             ir.initial_states,
             HashMap::from([
-                ("move".to_string(), "move.q0".to_string()),
-                ("add".to_string(), "add.first".to_string()),
-                ("main".to_string(), "main.first".to_string()),
+                ("move".into(), "move.q0".into()),
+                ("add".into(), "add.first".into()),
+                ("main".into(), "main.first".into()),
             ])
         );
         assert_eq!(
             ir.accept_states,
             HashSet::from([
-                "move.q1".to_string(),
-                "add.done".to_string(),
-                "main.finally".to_string(),
-                "main.finally".to_string(),
-                "main.finally".to_string()
+                "move.q1".into(),
+                "add.done".into(),
+                "main.finally".into(),
+                "main.finally".into(),
+                "main.finally".into()
             ])
         );
         assert_eq!(
             ir.reject_states,
             HashSet::from([
-                "add.ups".to_string(),
-                "add.sink".to_string(),
-                "main.double_ups".to_string()
+                "add.ups".into(),
+                "add.sink".into(),
+                "main.double_ups".into()
             ])
         );
         assert_eq!(
             ir.transition_states,
             HashSet::from([
-                "move.q0".to_string(),
-                "add.first".to_string(),
-                "add.m.q0".to_string(),
-                "add.m.q1".to_string(),
-                "main.first".to_string(),
-                "main.a1.first".to_string(),
-                "main.a1.done".to_string(),
-                "main.a1.ups".to_string(),
-                "main.a1.sink".to_string(),
-                "main.a1.m.q0".to_string(),
-                "main.a1.m.q1".to_string(),
-                "main.a2.first".to_string(),
-                "main.a2.done".to_string(),
-                "main.a2.ups".to_string(),
-                "main.a2.sink".to_string(),
-                "main.a2.m.q0".to_string(),
-                "main.a2.m.q1".to_string()
+                "move.q0".into(),
+                "add.first".into(),
+                "add.m.q0".into(),
+                "add.m.q1".into(),
+                "main.first".into(),
+                "main.a1.first".into(),
+                "main.a1.done".into(),
+                "main.a1.ups".into(),
+                "main.a1.sink".into(),
+                "main.a1.m.q0".into(),
+                "main.a1.m.q1".into(),
+                "main.a2.first".into(),
+                "main.a2.done".into(),
+                "main.a2.ups".into(),
+                "main.a2.sink".into(),
+                "main.a2.m.q0".into(),
+                "main.a2.m.q1".into()
             ])
         );
         assert_eq!(
             ir.transitions,
             HashMap::from([
                 (
-                    "move.q0".to_string(),
-                    HashMap::from([('_', ('_', Move::R, "move.q1".to_string()))])
+                    "move.q0".into(),
+                    HashMap::from([('_', ('_', Move::R, "move.q1".into()))])
                 ),
                 (
-                    "add.first".to_string(),
+                    "add.first".into(),
                     HashMap::from([
-                        ('1', ('0', Move::N, "add.m.q0".to_string())),
-                        ('0', ('1', Move::N, "add.m.q0".to_string())),
-                        ('_', ('_', Move::N, "add.sink".to_string()))
+                        ('1', ('0', Move::N, "add.m.q0".into())),
+                        ('0', ('1', Move::N, "add.m.q0".into())),
+                        ('_', ('_', Move::N, "add.sink".into()))
                     ])
                 ),
                 (
-                    "add.m.q0".to_string(),
-                    HashMap::from([('_', ('_', Move::R, "add.m.q1".to_string()))])
+                    "add.m.q0".into(),
+                    HashMap::from([('_', ('_', Move::R, "add.m.q1".into()))])
                 ),
                 (
-                    "add.m.q1".to_string(),
+                    "add.m.q1".into(),
                     HashMap::from([
-                        ('A', ('_', Move::N, "add.done".to_string())),
-                        ('_', ('B', Move::N, "add.ups".to_string()))
+                        ('A', ('_', Move::N, "add.done".into())),
+                        ('_', ('B', Move::N, "add.ups".into()))
                     ])
                 ),
                 (
-                    "main.a1.m.q0".to_string(),
-                    HashMap::from([('_', ('_', Move::R, "main.a1.m.q1".to_string()))])
+                    "main.a1.m.q0".into(),
+                    HashMap::from([('_', ('_', Move::R, "main.a1.m.q1".into()))])
                 ),
                 (
-                    "main.a1.m.q1".to_string(),
+                    "main.a1.m.q1".into(),
                     HashMap::from([
-                        ('A', ('_', Move::N, "main.a1.done".to_string())),
-                        ('_', ('B', Move::N, "main.a1.ups".to_string()))
+                        ('A', ('_', Move::N, "main.a1.done".into())),
+                        ('_', ('B', Move::N, "main.a1.ups".into()))
                     ])
                 ),
                 (
-                    "main.a1.first".to_string(),
+                    "main.a1.first".into(),
                     HashMap::from([
-                        ('1', ('0', Move::N, "main.a1.m.q0".to_string())),
-                        ('0', ('1', Move::N, "main.a1.m.q0".to_string())),
-                        ('_', ('_', Move::N, "main.a1.sink".to_string()))
+                        ('1', ('0', Move::N, "main.a1.m.q0".into())),
+                        ('0', ('1', Move::N, "main.a1.m.q0".into())),
+                        ('_', ('_', Move::N, "main.a1.sink".into()))
                     ])
                 ),
                 (
-                    "main.a2.m.q0".to_string(),
-                    HashMap::from([('_', ('_', Move::R, "main.a2.m.q1".to_string()))])
+                    "main.a2.m.q0".into(),
+                    HashMap::from([('_', ('_', Move::R, "main.a2.m.q1".into()))])
                 ),
                 (
-                    "main.a2.m.q1".to_string(),
+                    "main.a2.m.q1".into(),
                     HashMap::from([
-                        ('A', ('_', Move::N, "main.a2.done".to_string())),
-                        ('_', ('B', Move::N, "main.a2.ups".to_string()))
+                        ('A', ('_', Move::N, "main.a2.done".into())),
+                        ('_', ('B', Move::N, "main.a2.ups".into()))
                     ])
                 ),
                 (
-                    "main.a2.first".to_string(),
+                    "main.a2.first".into(),
                     HashMap::from([
-                        ('1', ('0', Move::N, "main.a2.m.q0".to_string())),
-                        ('0', ('1', Move::N, "main.a2.m.q0".to_string())),
-                        ('_', ('_', Move::N, "main.a2.sink".to_string()))
+                        ('1', ('0', Move::N, "main.a2.m.q0".into())),
+                        ('0', ('1', Move::N, "main.a2.m.q0".into())),
+                        ('_', ('_', Move::N, "main.a2.sink".into()))
                     ])
                 ),
                 (
-                    "main.first".to_string(),
+                    "main.first".into(),
                     HashMap::from([
-                        ('&', ('@', Move::L, "main.a1.first".to_string())),
-                        ('_', ('2', Move::N, "main.a2.first".to_string()))
+                        ('&', ('@', Move::L, "main.a1.first".into())),
+                        ('_', ('2', Move::N, "main.a2.first".into()))
                     ])
                 ),
                 (
-                    "main.a1.done".to_string(),
-                    HashMap::from([('_', ('_', Move::N, "main.finally".to_string())),])
+                    "main.a1.done".into(),
+                    HashMap::from([('_', ('_', Move::N, "main.finally".into())),])
                 ),
                 (
-                    "main.a1.ups".to_string(),
-                    HashMap::from([('_', ('_', Move::N, "main.finally".to_string())),])
+                    "main.a1.ups".into(),
+                    HashMap::from([('_', ('_', Move::N, "main.finally".into())),])
                 ),
                 (
-                    "main.a1.sink".to_string(),
-                    HashMap::from([('_', ('_', Move::N, "main.finally".to_string())),])
+                    "main.a1.sink".into(),
+                    HashMap::from([('_', ('_', Move::N, "main.finally".into())),])
                 ),
                 (
-                    "main.a2.done".to_string(),
-                    HashMap::from([('_', ('_', Move::N, "main.finally".to_string())),])
+                    "main.a2.done".into(),
+                    HashMap::from([('_', ('_', Move::N, "main.finally".into())),])
                 ),
                 (
-                    "main.a2.ups".to_string(),
-                    HashMap::from([('_', ('_', Move::N, "main.double_ups".to_string())),])
+                    "main.a2.ups".into(),
+                    HashMap::from([('_', ('_', Move::N, "main.double_ups".into())),])
                 ),
                 (
-                    "main.a2.sink".to_string(),
-                    HashMap::from([('_', ('_', Move::N, "main.double_ups".to_string())),])
+                    "main.a2.sink".into(),
+                    HashMap::from([('_', ('_', Move::N, "main.double_ups".into())),])
                 )
             ])
         );

@@ -8,10 +8,11 @@ use crate::{codegen::*, info};
 use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::rc::Rc;
 
 pub fn read_and_compile(
     filename: &String,
-    mut automaton: String,
+    mut automaton: Rc<str>,
     memory: u64,
     debug: bool,
 ) -> Result<(), Vec<info::Error>> {
@@ -22,11 +23,15 @@ pub fn read_and_compile(
         Ok(ast) => ast,
         Err(err) => {
             return Err(vec![info::Error::Other {
-                msg: err.to_string(),
+                msg: err.to_string().into(),
             }])
         }
     };
-    if automaton == "main" && automata.iter().all(|auto| auto.name.name != "main") {
+    if automaton.as_ref() == "main"
+        && automata
+            .iter()
+            .all(|auto| auto.name.name.as_ref() != "main")
+    {
         automaton = automata[0].name.name.clone();
     }
     let mut ir = flatten_automaton(automata, automaton.clone());
@@ -39,7 +44,7 @@ pub fn read_and_compile(
     }
 }
 
-pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
+pub fn compile(name: Rc<str>, ir: FAIR, memory: u64, debug: bool) {
     //    Layout, in order: [ELF headers] [write_char] [exit] [_start] [tape] [strings] [compiled program]
     let write_str_addr = BASE_ADDR + HEADER_SIZE;
     let exit_addr = write_str_addr + WRITE_STR.len() as u64;
@@ -49,8 +54,8 @@ pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
 
     // All printed strings
     let mut string_table: Vec<u8> = Vec::new();
-    let mut string_addrs: HashMap<String, (u64, usize)> = HashMap::new();
-    let mut strings: Vec<String> = Vec::from([
+    let mut string_addrs: HashMap<Rc<str>, (u64, usize)> = HashMap::new();
+    let mut strings: Vec<Rc<str>> = Vec::from([
         "\n",
         "->",
         "|",
@@ -64,9 +69,9 @@ pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
         "` in input!",
     ])
     .iter()
-    .map(|s| s.to_string())
+    .map(|s| (*s).into())
     .collect();
-    strings.push(format!("Memory limit {} exceeded!\n", memory));
+    strings.push(format!("Memory limit {} exceeded!\n", memory).into());
     strings.extend(ir.transition_states.clone().into_iter());
     strings.extend(ir.accept_states.clone().into_iter());
     strings.extend(ir.reject_states.clone().into_iter());
@@ -111,7 +116,7 @@ pub fn compile(name: String, ir: FAIR, memory: u64, debug: bool) {
     let elf_bytes = build_executable(&code, entry_offset);
 
     // Write the file and mark it executable
-    let out_path = name.as_str();
+    let out_path = name.as_ref();
     fs::write(out_path, &elf_bytes).expect("failed to write output file");
     let mut perms = fs::metadata(out_path).unwrap().permissions();
     perms.set_mode(0o755);

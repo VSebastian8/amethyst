@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::ast::Ast;
 use crate::ast::Move;
@@ -8,10 +9,10 @@ use crate::info::Error;
 
 #[derive(Debug)]
 pub struct Interpreter {
-    initial_states: HashMap<String, String>,
-    final_states: HashMap<String, bool>,
-    transitions: HashMap<String, HashMap<char, (char, Move, String)>>,
-    pub state: String,
+    initial_states: HashMap<Rc<str>, Rc<str>>,
+    final_states: HashMap<Rc<str>, bool>,
+    transitions: HashMap<Rc<str>, HashMap<char, (char, Move, Rc<str>)>>,
+    pub state: Rc<str>,
     left: Vec<char>,
     right: Vec<char>,
 }
@@ -22,7 +23,7 @@ impl Interpreter {
             initial_states: HashMap::new(),
             final_states: HashMap::new(),
             transitions: HashMap::new(),
-            state: "".to_string(),
+            state: "".into(),
             left: Vec::new(),
             right: Vec::new(),
         }
@@ -40,9 +41,9 @@ impl Interpreter {
         }
         self.initial_states.extend(ir.initial_states);
         self.final_states
-            .extend(ir.accept_states.iter().map(|s| (s.to_string(), true)));
+            .extend(ir.accept_states.iter().map(|s| (s.clone(), true)));
         self.final_states
-            .extend(ir.reject_states.iter().map(|s| (s.to_string(), false)));
+            .extend(ir.reject_states.iter().map(|s| (s.clone(), false)));
         self.transitions.extend(ir.transitions);
         Ok(())
     }
@@ -50,13 +51,17 @@ impl Interpreter {
     pub fn load_automaton(
         &mut self,
         program: Ast,
-        mut automaton: String,
+        mut automaton: Rc<str>,
     ) -> Result<(), Vec<Error>> {
         let Ast {
             automata,
             mut errors,
         } = program;
-        if automaton == "main" && automata.iter().all(|auto| auto.name.name != "main") {
+        if automaton.as_ref() == "main"
+            && automata
+                .iter()
+                .all(|auto| auto.name.name.as_ref() != "main")
+        {
             automaton = automata[0].name.name.clone();
         }
         let mut ir = flatten_automaton(automata, automaton);
@@ -66,18 +71,18 @@ impl Interpreter {
         }
         self.initial_states.extend(ir.initial_states);
         self.final_states
-            .extend(ir.accept_states.iter().map(|s| (s.to_string(), true)));
+            .extend(ir.accept_states.iter().map(|s| (s.clone(), true)));
         self.final_states
-            .extend(ir.reject_states.iter().map(|s| (s.to_string(), false)));
+            .extend(ir.reject_states.iter().map(|s| (s.clone(), false)));
         self.transitions.extend(ir.transitions);
         Ok(())
     }
 
-    pub fn load(&mut self, filename: &str, automaton: String) -> Result<(), Vec<Error>> {
+    pub fn load(&mut self, filename: &str, automaton: Rc<str>) -> Result<(), Vec<Error>> {
         match gem::load_ast(filename) {
             Ok(program) => self.load_automaton(program, automaton),
             Err(err) => Err(vec![Error::Other {
-                msg: err.to_string(),
+                msg: err.to_string().into(),
             }]),
         }
     }
@@ -86,7 +91,7 @@ impl Interpreter {
         match gem::load_ast(filename) {
             Ok(program) => self.load_program(program),
             Err(err) => Err(vec![Error::Other {
-                msg: err.to_string(),
+                msg: err.to_string().into(),
             }]),
         }
     }
@@ -140,7 +145,7 @@ impl Interpreter {
         let automaton = if start == "main" && !self.initial_states.contains_key("main") {
             self.initial_states.keys().next().unwrap().clone()
         } else {
-            start.to_string()
+            start.into()
         };
         self.set_start(&automaton)?;
         self.set_input(input)?;

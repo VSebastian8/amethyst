@@ -78,8 +78,8 @@ impl Lexer {
                         }
                     } else {
                         self.errors.push(Error::NotTerminated {
-                            start: "`{`".to_string(),
-                            end: "`}`".to_string(),
+                            start: "`{`".into(),
+                            end: "`}`".into(),
                             info: Info {
                                 line,
                                 from,
@@ -102,8 +102,8 @@ impl Lexer {
                             }
                             _ => {
                                 self.errors.push(Error::Unknown {
-                                    typ: "character".to_string(),
-                                    found: "`-`".to_string(),
+                                    typ: "character".into(),
+                                    found: "`-`".into(),
                                     info: Info {
                                         line,
                                         from,
@@ -115,8 +115,8 @@ impl Lexer {
                         }
                     } else {
                         self.errors.push(Error::Unknown {
-                            typ: "character".to_string(),
-                            found: format!("`{}`", ch),
+                            typ: "character".into(),
+                            found: format!("`{}`", ch).into(),
                             info: Info {
                                 line,
                                 from,
@@ -134,8 +134,8 @@ impl Lexer {
                 _ => {
                     self.advance();
                     self.errors.push(Error::Unknown {
-                        typ: "character".to_string(),
-                        found: format!("`{}`", ch),
+                        typ: "character".into(),
+                        found: format!("`{}`", ch).into(),
                         info: Info {
                             line,
                             from,
@@ -192,8 +192,8 @@ impl Lexer {
             }
         }
         self.errors.push(Error::NotTerminated {
-            start: "block comment".to_string(),
-            end: "`-}`".to_string(),
+            start: "block comment".into(),
+            end: "`-}`".into(),
             info: Info {
                 line,
                 from: to - 2,
@@ -218,7 +218,7 @@ impl Lexer {
             .any(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
         {
             self.errors.push(Error::MalformedIdentifier {
-                ident: word.clone(),
+                ident: word.clone().into(),
                 info: Info {
                     line: self.line,
                     from: from,
@@ -236,7 +236,7 @@ impl Lexer {
             "as" => Token::As,
             _ => {
                 let desc = mem::replace(&mut self.description, String::new());
-                Token::Ident(word, desc.trim().to_string())
+                Token::Ident(word.into(), desc.trim().into())
             }
         }
     }
@@ -265,7 +265,7 @@ mod tests {
                 LBracket,
                 Accept,
                 State,
-                Ident("acceptstate".to_string(), "".to_string()),
+                Ident("acceptstate".into(), "".into()),
                 RBracket
             ]
         );
@@ -353,7 +353,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("first".to_string(), "This is a line comment".to_string()),
+                    token: Ident("first".into(), "This is a line comment".into()),
                     info: Info {
                         line: 1,
                         from: 14,
@@ -417,7 +417,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("second_state2".to_string(), "".to_string()),
+                    token: Ident("second_state2".into(), "".into()),
                     info: Info {
                         line: 2,
                         from: 13,
@@ -460,8 +460,8 @@ mod tests {
         assert_eq!(
             lexer.errors,
             vec![Error::Unknown {
-                typ: "character".to_string(),
-                found: "`?`".to_string(),
+                typ: "character".into(),
+                found: "`?`".into(),
                 info: Info {
                     line: 0,
                     from: 10,
@@ -479,7 +479,7 @@ mod tests {
         assert_eq!(
             lexer.errors,
             vec![Error::MalformedIdentifier {
-                ident: "camelCase".to_string(),
+                ident: "camelCase".into(),
                 info: Info {
                     line: 0,
                     from: 6,
@@ -498,7 +498,7 @@ mod tests {
             tokens,
             vec![
                 TokenInfo {
-                    token: Ident("stAte".to_string(), "".to_string()),
+                    token: Ident("stAte".into(), "".into()),
                     info: Info {
                         line: 0,
                         from: 0,
@@ -506,7 +506,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("q0".to_string(), "".to_string()),
+                    token: Ident("q0".into(), "".into()),
                     info: Info {
                         line: 1,
                         from: 1,
@@ -514,7 +514,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("ups".to_string(), "".to_string()),
+                    token: Ident("ups".into(), "".into()),
                     info: Info {
                         line: 1,
                         from: 5,
@@ -528,7 +528,7 @@ mod tests {
             lexer.errors,
             vec![
                 Error::MalformedIdentifier {
-                    ident: "stAte".to_string(),
+                    ident: "stAte".into(),
                     info: Info {
                         line: 0,
                         from: 0,
@@ -536,8 +536,8 @@ mod tests {
                     }
                 },
                 Error::Unknown {
-                    typ: "character".to_string(),
-                    found: "`#`".to_string(),
+                    typ: "character".into(),
+                    found: "`#`".into(),
                     info: Info {
                         line: 1,
                         from: 0,
@@ -545,8 +545,8 @@ mod tests {
                     }
                 },
                 Error::Unknown {
-                    typ: "character".to_string(),
-                    found: "`-`".to_string(),
+                    typ: "character".into(),
+                    found: "`-`".into(),
                     info: Info {
                         line: 1,
                         from: 4,
@@ -554,8 +554,8 @@ mod tests {
                     }
                 },
                 Error::NotTerminated {
-                    start: "block comment".to_string(),
-                    end: "`-}`".to_string(),
+                    start: "block comment".into(),
+                    end: "`-}`".into(),
                     info: Info {
                         line: 1,
                         from: 9,
@@ -583,10 +583,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident(
-                        "add".to_string(),
-                        "This turing machine \n is pretty neat".to_string()
-                    ),
+                    token: Ident("add".into(), "This turing machine \n is pretty neat".into()),
                     info: Info {
                         line: 2,
                         from: 11,
@@ -602,7 +599,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("a".to_string(), String::new()),
+                    token: Ident("a".into(), "".into()),
                     info: Info {
                         line: 2,
                         from: 15,
@@ -618,7 +615,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("b".to_string(), String::new()),
+                    token: Ident("b".into(), "".into()),
                     info: Info {
                         line: 2,
                         from: 20,
@@ -658,7 +655,7 @@ mod tests {
                     }
                 },
                 TokenInfo {
-                    token: Ident("ups".to_string(), "this \n state  is cool".to_string()),
+                    token: Ident("ups".into(), "this \n state  is cool".into()),
                     info: Info {
                         line: 6,
                         from: 7,

@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::info::Error;
 use crate::info::StringInfo;
 
@@ -27,7 +29,7 @@ pub enum StateType {
 pub struct State {
     pub name: StringInfo,
     pub typ: StateType,
-    pub desc: String,
+    pub desc: Rc<str>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,7 +37,7 @@ pub struct Automaton {
     pub name: StringInfo,
     pub components: Vec<(StringInfo, StringInfo)>,
     pub states: Vec<State>,
-    pub desc: String,
+    pub desc: Rc<str>,
 }
 
 pub struct Ast {

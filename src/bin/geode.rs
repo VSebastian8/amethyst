@@ -29,7 +29,7 @@ fn main() {
             ..
         } => {
             // Instantiate the interpreter with starting automaton
-            if let Err(errors) = interpreter.load(input.as_str(), start.clone()) {
+            if let Err(errors) = interpreter.load(input.as_str(), start.clone().into()) {
                 println!("Loading file {} failed, encountered errors:", input);
                 for e in errors {
                     e.print_context();
@@ -52,7 +52,7 @@ fn main() {
                 println!("Automata:");
                 for automaton in automata {
                     println!("- {}", automaton.name.name);
-                    if desc && automaton.desc != String::new() {
+                    if desc && automaton.desc.as_ref() != "" {
                         for line in automaton.desc.lines() {
                             println!("  // {}", line);
                         }
@@ -61,7 +61,7 @@ fn main() {
                         println!("  States:");
                         for state in automaton.states {
                             println!("  - {}", state.name.name);
-                            if desc && state.desc != String::new() {
+                            if desc && state.desc.as_ref() != "" {
                                 for line in state.desc.lines() {
                                     println!("      // {}", line);
                                 }
@@ -91,7 +91,7 @@ fn main() {
             debug,
         } => {
             // Compile the amethyst code and report possible errors
-            if let Err(errors) = read_and_compile(&input, start, memory as u64, debug) {
+            if let Err(errors) = read_and_compile(&input, start.into(), memory as u64, debug) {
                 println!("Compiling file {} failed, encountered errors:", input);
                 for e in errors {
                     e.print_context();

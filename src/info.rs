@@ -1,5 +1,5 @@
 use crate::token::TokenInfo;
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Info {
@@ -10,7 +10,7 @@ pub struct Info {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringInfo {
-    pub name: String,
+    pub name: Rc<str>,
     pub info: Info,
 }
 
@@ -18,7 +18,7 @@ impl StringInfo {
     // Used for terser tests
     pub fn from(name: &str) -> Self {
         StringInfo {
-            name: name.to_string(),
+            name: name.into(),
             info: Info::default(),
         }
     }
@@ -27,46 +27,46 @@ impl StringInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     Unknown {
-        typ: String,
-        found: String,
+        typ: Rc<str>,
+        found: Rc<str>,
         info: Info,
     },
     NotTerminated {
-        start: String,
-        end: String,
+        start: Rc<str>,
+        end: Rc<str>,
         info: Info,
     },
     MalformedIdentifier {
-        ident: String,
+        ident: Rc<str>,
         info: Info,
     },
     EOF {
-        expected: String,
+        expected: Rc<str>,
     },
     Unexpected {
-        expected: String,
+        expected: Rc<str>,
         token: TokenInfo,
     },
     Missing {
-        expected: String,
+        expected: Rc<str>,
         info: Info,
     },
     Defined {
-        typ: String,
-        name: String,
+        typ: Rc<str>,
+        name: Rc<str>,
         info: Info,
     },
     NotAllowed {
-        reason: String,
+        reason: Rc<str>,
         info: Info,
     },
     Cycle {
-        typ: String,
-        name: String,
+        typ: Rc<str>,
+        name: Rc<str>,
         info: Info,
     },
     Other {
-        msg: String,
+        msg: Rc<str>,
     },
 }
 

@@ -70,11 +70,11 @@ pub fn test_abc() {
     let mut interp = Interpreter::new();
     interp.load_program(gem::parse_ast(code)).unwrap();
     interp.run("validator", "").unwrap();
-    assert_eq!("validator.true", interp.state);
+    assert_eq!("validator.true", interp.state.as_ref());
     interp.run("validator", "AABBCC").unwrap();
-    assert_eq!("validator.true", interp.state);
+    assert_eq!("validator.true", interp.state.as_ref());
     interp.run("validator", "AABCC").unwrap();
-    assert_eq!("validator.false", interp.state);
+    assert_eq!("validator.false", interp.state.as_ref());
     interp.run("validator", "AAAAABBBBBCCCCC").unwrap();
-    assert_eq!("validator.true", interp.state);
+    assert_eq!("validator.true", interp.state.as_ref());
 }

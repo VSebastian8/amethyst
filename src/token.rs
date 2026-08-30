@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 use crate::info::Info;
 
@@ -23,12 +23,12 @@ pub enum Token {
     Arrow,
     // literals
     Symbol(char),
-    Ident(String, String),
+    Ident(Rc<str>, Rc<str>),
 }
 
-impl Token {
-    pub fn to_string(&self) -> String {
-        match self {
+impl From<Token> for Rc<str> {
+    fn from(token: Token) -> Rc<str> {
+        match token {
             Token::Automaton => "keyword `automaton`",
             Token::State => "keyword `state`",
             Token::Initial => "keyword `initial`",
@@ -44,16 +44,18 @@ impl Token {
             Token::Semicolon => "`;`",
             Token::Dot => "`.`",
             Token::Arrow => "`->`",
-            Token::Symbol(ch) => return format!("symbol `{}`", ch),
-            Token::Ident(x, _) => return format!("identifier `{}`", x),
+            Token::Symbol(ch) => return format!("symbol `{}`", ch).into(),
+            Token::Ident(x, _) => return format!("identifier `{}`", x).into(),
         }
-        .to_string()
+        .into()
     }
 }
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        // TODO: avoid clone
+        let msg: Rc<str> = self.clone().into();
+        write!(f, "{}", msg)
     }
 }
 
