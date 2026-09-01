@@ -4,11 +4,19 @@
 use crate::ast::Ast;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use crate::token::Token;
 use std::fs;
 
 pub fn parse_ast(code: &str) -> Ast {
     let mut lexer = Lexer::new(code);
-    let tokens = lexer.tokenize();
+    let tokens = lexer
+        .tokenize()
+        .into_iter()
+        .filter(|t| match t.token {
+            Token::Newline | Token::Comment(_) | Token::Unknown(_) => false,
+            _ => true,
+        })
+        .collect();
 
     let parser = Parser::new(tokens);
     let Ast { automata, errors } = parser.parse();

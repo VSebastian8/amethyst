@@ -42,7 +42,7 @@ impl Lexer {
     pub fn tokenize(&mut self) -> Vec<TokenInfo> {
         let mut tokens = Vec::new();
         while let Some(&ch) = self.chars.peek() {
-            if ch.is_whitespace() {
+            if ch.is_whitespace() && ch != '\n' {
                 self.advance();
                 continue;
             }
@@ -50,6 +50,7 @@ impl Lexer {
             let from = self.column;
             let line = self.line;
             let token = match ch {
+                '\n' => Token::Newline,
                 '(' => Token::LParanthesis,
                 ')' => Token::RParanthesis,
                 '}' => {
@@ -64,17 +65,14 @@ impl Lexer {
                 '{' => {
                     // either bracket or block comment
                     self.advance();
+                    skip = false;
                     if let Some(&c) = self.chars.peek() {
                         match c {
                             '-' => {
                                 self.advance();
-                                self.read_block_comment();
-                                continue;
+                                self.read_block_comment()
                             }
-                            _ => {
-                                skip = false;
-                                Token::LBracket
-                            }
+                            _ => Token::LBracket,
                         }
                     } else {
                         self.errors.push(Error::NotTerminated {
@@ -97,10 +95,11 @@ impl Lexer {
                             '>' => Token::Arrow,
                             '-' => {
                                 self.advance();
-                                self.read_line_comment();
-                                continue;
+                                skip = false;
+                                self.read_line_comment()
                             }
                             _ => {
+                                skip = false;
                                 self.errors.push(Error::Unknown {
                                     typ: "character".into(),
                                     found: "`-`".into(),
@@ -110,7 +109,7 @@ impl Lexer {
                                         to: self.column,
                                     },
                                 });
-                                continue;
+                                Token::Unknown(ch)
                             }
                         }
                     } else {
@@ -123,7 +122,7 @@ impl Lexer {
                                 to: self.column,
                             },
                         });
-                        continue;
+                        Token::Unknown(ch)
                     }
                 }
                 'a'..='z' => {
@@ -132,17 +131,16 @@ impl Lexer {
                 }
                 'A'..='Z' | '0'..='9' | '_' | '@' | '&' => Token::Symbol(ch),
                 _ => {
-                    self.advance();
                     self.errors.push(Error::Unknown {
                         typ: "character".into(),
                         found: format!("`{}`", ch).into(),
                         info: Info {
                             line,
                             from,
-                            to: self.column,
+                            to: self.column + 1,
                         },
                     });
-                    continue;
+                    Token::Unknown(ch)
                 }
             };
             if skip {
@@ -161,7 +159,7 @@ impl Lexer {
         tokens
     }
 
-    fn read_line_comment(&mut self) {
+    fn read_line_comment(&mut self) -> Token {
         let mut comment = String::new();
         while let Some(c) = self.advance() {
             comment.push(c);
@@ -170,18 +168,21 @@ impl Lexer {
             }
         }
         self.description.push_str(&comment);
+        Token::Comment(comment.into())
     }
 
-    fn read_block_comment(&mut self) {
+    fn read_block_comment(&mut self) -> Token {
         let line = self.line;
         let to = self.column;
         let mut comment = String::new();
+        let mut terminated = false;
         while let Some(c) = self.advance() {
             if c == '-' {
                 if let Some(c2) = self.advance() {
                     if c2 == '}' {
                         self.description.push_str(&comment);
-                        return;
+                        terminated = true;
+                        break;
                     } else {
                         comment.push(c);
                         comment.push(c2);
@@ -191,15 +192,18 @@ impl Lexer {
                 comment.push(c);
             }
         }
-        self.errors.push(Error::NotTerminated {
-            start: "block comment".into(),
-            end: "`-}`".into(),
-            info: Info {
-                line,
-                from: to - 2,
-                to,
-            },
-        })
+        if !terminated {
+            self.errors.push(Error::NotTerminated {
+                start: "block comment".into(),
+                end: "`-}`".into(),
+                info: Info {
+                    line,
+                    from: to - 2,
+                    to,
+                },
+            })
+        }
+        Token::Comment(comment.into())
     }
 
     fn read_word(&mut self) -> Token {
@@ -337,6 +341,14 @@ mod tests {
                     }
                 },
                 TokenInfo {
+                    token: Comment(" This is a line comment\n".into()),
+                    info: Info {
+                        line: 0,
+                        from: 10,
+                        to: 0
+                    }
+                },
+                TokenInfo {
                     token: Initial,
                     info: Info {
                         line: 1,
@@ -366,6 +378,14 @@ mod tests {
                         line: 1,
                         from: 20,
                         to: 21
+                    }
+                },
+                TokenInfo {
+                    token: Newline,
+                    info: Info {
+                        line: 1,
+                        from: 21,
+                        to: 0
                     }
                 },
                 TokenInfo {
@@ -430,6 +450,14 @@ mod tests {
                         line: 2,
                         from: 26,
                         to: 27
+                    }
+                },
+                TokenInfo {
+                    token: Comment(" This \n - is a - \n multiline comment ".into()),
+                    info: Info {
+                        line: 2,
+                        from: 28,
+                        to: 21
                     }
                 },
                 TokenInfo {
@@ -506,11 +534,35 @@ mod tests {
                     }
                 },
                 TokenInfo {
+                    token: Newline,
+                    info: Info {
+                        line: 0,
+                        from: 6,
+                        to: 0
+                    }
+                },
+                TokenInfo {
+                    token: Unknown('#'),
+                    info: Info {
+                        line: 1,
+                        from: 0,
+                        to: 1
+                    }
+                },
+                TokenInfo {
                     token: Ident("q0".into(), "".into()),
                     info: Info {
                         line: 1,
                         from: 1,
                         to: 3
+                    }
+                },
+                TokenInfo {
+                    token: Unknown('-'),
+                    info: Info {
+                        line: 1,
+                        from: 4,
+                        to: 5
                     }
                 },
                 TokenInfo {
@@ -521,6 +573,14 @@ mod tests {
                         to: 8
                     }
                 },
+                TokenInfo {
+                    token: Comment(" some\nthing - } ".into()),
+                    info: Info {
+                        line: 1,
+                        from: 9,
+                        to: 10
+                    }
+                }
             ]
         );
 
@@ -574,6 +634,22 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
+                TokenInfo {
+                    token: Comment(" This turing machine \n".into()),
+                    info: Info {
+                        line: 0,
+                        from: 0,
+                        to: 0
+                    }
+                },
+                TokenInfo {
+                    token: Comment(" is pretty neat \n".into()),
+                    info: Info {
+                        line: 1,
+                        from: 1,
+                        to: 0
+                    }
+                },
                 TokenInfo {
                     token: Automaton,
                     info: Info {
@@ -639,11 +715,43 @@ mod tests {
                     }
                 },
                 TokenInfo {
+                    token: Newline,
+                    info: Info {
+                        line: 2,
+                        from: 25,
+                        to: 0
+                    }
+                },
+                TokenInfo {
+                    token: Comment("other ignored comment\n".into()),
+                    info: Info {
+                        line: 3,
+                        from: 0,
+                        to: 0
+                    }
+                },
+                TokenInfo {
                     token: RBracket,
                     info: Info {
                         line: 4,
                         from: 1,
                         to: 2
+                    }
+                },
+                TokenInfo {
+                    token: Comment(" this \n state ".into()),
+                    info: Info {
+                        line: 4,
+                        from: 3,
+                        to: 9
+                    }
+                },
+                TokenInfo {
+                    token: Comment(" is cool \n".into()),
+                    info: Info {
+                        line: 5,
+                        from: 10,
+                        to: 0
                     }
                 },
                 TokenInfo {
@@ -659,6 +767,14 @@ mod tests {
                     info: Info {
                         line: 6,
                         from: 7,
+                        to: 10
+                    }
+                },
+                TokenInfo {
+                    token: Comment(" some\nthing - } ".into()),
+                    info: Info {
+                        line: 6,
+                        from: 11,
                         to: 10
                     }
                 }

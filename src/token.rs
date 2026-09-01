@@ -24,6 +24,10 @@ pub enum Token {
     // literals
     Symbol(char),
     Ident(Rc<str>, Rc<str>),
+    // CST
+    Newline,
+    Comment(Rc<str>),
+    Unknown(char),
 }
 
 impl From<Token> for Rc<str> {
@@ -46,6 +50,9 @@ impl From<Token> for Rc<str> {
             Token::Arrow => "`->`",
             Token::Symbol(ch) => return format!("symbol `{}`", ch).into(),
             Token::Ident(x, _) => return format!("identifier `{}`", x).into(),
+            Token::Newline => "`\\n`",
+            Token::Comment(x) => return format!("comment `{}`", x).into(),
+            Token::Unknown(x) => return format!("character `{}`", x).into(),
         }
         .into()
     }
