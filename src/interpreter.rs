@@ -5,7 +5,7 @@ use crate::ast::Ast;
 use crate::ast::Move;
 use crate::fair::{flatten_automata, flatten_automaton};
 use crate::gem;
-use crate::info::Error;
+use crate::info::ErrorInfo;
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -29,13 +29,20 @@ impl Interpreter {
         }
     }
 
-    pub fn load_program(&mut self, program: Ast) -> Result<(), Vec<Error>> {
+    pub fn load_program(&mut self, program: Ast) -> Result<(), Vec<ErrorInfo>> {
         let Ast {
             automata,
-            mut errors,
+            errors: syntax_errors,
         } = program;
-        let mut ir = flatten_automata(automata);
-        errors.append(&mut ir.errors);
+        let ir = flatten_automata(automata);
+        let errors: Vec<_> = syntax_errors
+            .iter()
+            .map(|err| ErrorInfo {
+                error: (*err).clone(),
+                info: None,
+            })
+            .chain(ir.errors.into_iter())
+            .collect();
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -45,6 +52,7 @@ impl Interpreter {
         self.final_states
             .extend(ir.reject_states.iter().map(|s| (s.clone(), false)));
         self.transitions.extend(ir.transitions);
+        println!("Done loading");
         Ok(())
     }
 
@@ -52,10 +60,10 @@ impl Interpreter {
         &mut self,
         program: Ast,
         mut automaton: Rc<str>,
-    ) -> Result<(), Vec<Error>> {
+    ) -> Result<(), Vec<ErrorInfo>> {
         let Ast {
             automata,
-            mut errors,
+            errors: syntax_errors,
         } = program;
         if automaton.as_ref() == "main"
             && automata
@@ -64,8 +72,15 @@ impl Interpreter {
         {
             automaton = automata[0].name.name.clone();
         }
-        let mut ir = flatten_automaton(automata, automaton);
-        errors.append(&mut ir.errors);
+        let ir = flatten_automaton(automata, automaton);
+        let errors: Vec<_> = syntax_errors
+            .iter()
+            .map(|err| ErrorInfo {
+                error: (*err).clone(),
+                info: None,
+            })
+            .chain(ir.errors.into_iter())
+            .collect();
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -78,21 +93,17 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn load(&mut self, filename: &str, automaton: Rc<str>) -> Result<(), Vec<Error>> {
+    pub fn load(&mut self, filename: &str, automaton: Rc<str>) -> Result<(), Vec<ErrorInfo>> {
         match gem::load_ast(filename) {
             Ok(program) => self.load_automaton(program, automaton),
-            Err(err) => Err(vec![Error::Other {
-                msg: err.to_string().into(),
-            }]),
+            Err(err) => Err(vec![err]),
         }
     }
 
-    pub fn load_all(&mut self, filename: &str) -> Result<(), Vec<Error>> {
+    pub fn load_all(&mut self, filename: &str) -> Result<(), Vec<ErrorInfo>> {
         match gem::load_ast(filename) {
             Ok(program) => self.load_program(program),
-            Err(err) => Err(vec![Error::Other {
-                msg: err.to_string().into(),
-            }]),
+            Err(err) => Err(vec![err]),
         }
     }
 

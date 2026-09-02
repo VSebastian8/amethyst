@@ -53,7 +53,7 @@ pub fn main() {
                     println!("Loading program failed, encountered errors:");
                     for e in errors {
                         e.print_context();
-                        println!("{}", e);
+                        println!("{}", e.error);
                     }
                 } else {
                     last_file = Some(filename.to_string());
@@ -67,7 +67,7 @@ pub fn main() {
                         println!("Loading program failed, encountered errors:");
                         for e in errors {
                             e.print_context();
-                            println!("{}", e);
+                            println!("{}", e.error);
                         }
                     } else {
                         println!("Program reloaded from {}", file);

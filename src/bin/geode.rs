@@ -18,7 +18,7 @@ fn main() {
                 println!("Loading file {} failed, encountered errors:", input);
                 for e in errors {
                     e.print_context();
-                    println!("{}", e);
+                    println!("{}", e.error);
                 }
                 std::process::exit(1);
             }
@@ -33,7 +33,7 @@ fn main() {
                 println!("Loading file {} failed, encountered errors:", input);
                 for e in errors {
                     e.print_context();
-                    println!("{}", e);
+                    println!("{}", e.error);
                 }
                 std::process::exit(1);
             }
@@ -45,7 +45,7 @@ fn main() {
         Command::Test { .. } => println!("Ok, no errors found"),
         Command::List { input, all, desc } => match gem::load_ast(&input) {
             Err(err) => {
-                println!("Error: {}", err);
+                println!("Error: {}", err.error);
                 return;
             }
             Ok(Ast { automata, .. }) => {
@@ -95,7 +95,7 @@ fn main() {
                 println!("Compiling file {} failed, encountered errors:", input);
                 for e in errors {
                     e.print_context();
-                    println!("{}", e);
+                    println!("{}", e.error);
                 }
                 std::process::exit(1);
             }

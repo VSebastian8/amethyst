@@ -15,17 +15,13 @@ pub fn read_and_compile(
     mut automaton: Rc<str>,
     memory: u64,
     debug: bool,
-) -> Result<(), Vec<info::Error>> {
+) -> Result<(), Vec<info::ErrorInfo>> {
     let Ast {
         automata,
-        mut errors,
+        errors: syntax_errors,
     } = match load_ast(filename) {
         Ok(ast) => ast,
-        Err(err) => {
-            return Err(vec![info::Error::Other {
-                msg: err.to_string().into(),
-            }])
-        }
+        Err(err) => return Err(vec![err]),
     };
     if automaton.as_ref() == "main"
         && automata
@@ -34,8 +30,15 @@ pub fn read_and_compile(
     {
         automaton = automata[0].name.name.clone();
     }
-    let mut ir = flatten_automaton(automata, automaton.clone());
-    errors.append(&mut ir.errors);
+    let ir = flatten_automaton(automata, automaton.clone());
+    let errors: Vec<_> = syntax_errors
+        .iter()
+        .map(|err| info::ErrorInfo {
+            error: (*err).clone(),
+            info: None,
+        })
+        .chain(ir.errors.clone().into_iter())
+        .collect();
     if !errors.is_empty() {
         return Err(errors);
     } else {

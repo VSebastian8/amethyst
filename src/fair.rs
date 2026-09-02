@@ -11,7 +11,7 @@ pub struct FAIR {
     pub accept_states: HashSet<Rc<str>>,
     pub reject_states: HashSet<Rc<str>>,
     pub transitions: HashMap<Rc<str>, HashMap<char, (char, Move, Rc<str>)>>,
-    pub errors: Vec<Error>,
+    pub errors: Vec<ErrorInfo>,
 }
 
 impl FAIR {
@@ -45,10 +45,12 @@ impl FAIR {
                 comp,
                 if name.as_ref() == "input" {
                     if !comps_input.contains_key(comp) {
-                        self.errors.push(Error::Unknown {
-                            typ: "component alias".into(),
-                            found: comp.clone(),
-                            info: cinfo.clone(),
+                        self.errors.push(ErrorInfo {
+                            error: Error::Unknown {
+                                typ: "component alias".into(),
+                                found: comp.clone(),
+                            },
+                            info: Some(cinfo.clone()),
                         });
                         return;
                     }
@@ -65,10 +67,12 @@ impl FAIR {
             && !self.accept_states.contains(&state)
             && !self.reject_states.contains(&state)
         {
-            self.errors.push(Error::Unknown {
-                typ: "state".into(),
-                found: state,
-                info: info.clone(),
+            self.errors.push(ErrorInfo {
+                error: Error::Unknown {
+                    typ: "state".into(),
+                    found: state,
+                },
+                info: Some(info.clone()),
             });
             return;
         }
@@ -91,10 +95,12 @@ impl FAIR {
             || self.reject_states.contains(&name)
             || self.transition_states.contains(&name)
         {
-            self.errors.push(Error::Defined {
-                typ: "State".into(),
-                name,
-                info: state.info.clone(),
+            self.errors.push(ErrorInfo {
+                error: Error::Defined {
+                    typ: "State".into(),
+                    name,
+                },
+                info: Some(state.info.clone()),
             })
         }
     }
@@ -139,20 +145,24 @@ impl FAIR {
         } = blueprint;
         // Check that component exists
         if !comps_input.contains_key(comp) {
-            self.errors.push(Error::Unknown {
-                typ: "component alias".into(),
-                found: comp.clone(),
-                info: cinfo.clone(),
+            self.errors.push(ErrorInfo {
+                error: Error::Unknown {
+                    typ: "component alias".into(),
+                    found: comp.clone(),
+                },
+                info: Some(cinfo.clone()),
             });
             return;
         }
         // Check that state doesn't already exist (unless final) TODO: Think about this?
         let state_name: Rc<str> = format!("{}{}.{}", prefix, comp, name).into();
         if self.transition_states.contains(&state_name) {
-            self.errors.push(Error::Defined {
-                typ: "State".into(),
-                name: state_name.clone(),
-                info: info.clone(),
+            self.errors.push(ErrorInfo {
+                error: Error::Defined {
+                    typ: "State".into(),
+                    name: state_name.clone(),
+                },
+                info: Some(info.clone()),
             });
             return;
         }
@@ -185,9 +195,11 @@ impl FAIR {
             _ => {
                 // Only rewrite final states
                 if comps_output[comp].iter().all(|(st, _)| st != name) {
-                    self.errors.push(Error::NotAllowed {
-                        reason: "Rewriting non-final blueprint states".into(),
-                        info: info.clone(),
+                    self.errors.push(ErrorInfo {
+                        error: Error::NotAllowed {
+                            reason: "Rewriting non-final blueprint states".into(),
+                        },
+                        info: Some(info.clone()),
                     });
                     return;
                 }
@@ -243,26 +255,32 @@ impl FAIR {
     ) -> Option<()> {
         let StringInfo { name, info } = automaton;
         if !automata.contains_key(name) {
-            self.errors.push(Error::Unknown {
-                typ: "automaton".into(),
-                found: name.clone(),
-                info: info.clone(),
+            self.errors.push(ErrorInfo {
+                error: Error::Unknown {
+                    typ: "automaton".into(),
+                    found: name.clone(),
+                },
+                info: Some(info.clone()),
             });
             return None;
         }
         if visited.contains(name) {
-            self.errors.push(Error::Cycle {
-                typ: "component".into(),
-                name: name.clone(),
-                info: info.clone(),
+            self.errors.push(ErrorInfo {
+                error: Error::Cycle {
+                    typ: "component".into(),
+                    name: name.clone(),
+                },
+                info: Some(info.clone()),
             });
             return None;
         }
         if self.initial_states.contains_key(name) {
-            self.errors.push(Error::Defined {
-                typ: "Automaton".into(),
-                name: name.clone(),
-                info: info.clone(),
+            self.errors.push(ErrorInfo {
+                error: Error::Defined {
+                    typ: "Automaton".into(),
+                    name: name.clone(),
+                },
+                info: Some(info.clone()),
             })
         }
         Some(())
@@ -292,10 +310,12 @@ impl FAIR {
         ) in automata[name].components.iter()
         {
             if aliases.contains(comp) {
-                self.errors.push(Error::Defined {
-                    typ: "Alias".into(),
-                    name: comp.clone(),
-                    info: cinfo.clone(),
+                self.errors.push(ErrorInfo {
+                    error: Error::Defined {
+                        typ: "Alias".into(),
+                        name: comp.clone(),
+                    },
+                    info: Some(cinfo.clone()),
                 });
                 continue;
             }
@@ -334,26 +354,32 @@ impl FAIR {
         // Check initial state validity
         let mut initial_state: Option<Rc<str>> = None;
         if automata[name].states.is_empty() {
-            self.errors.push(Error::NotAllowed {
-                reason: "Automaton without states".into(),
-                info: info.clone(),
+            self.errors.push(ErrorInfo {
+                error: Error::NotAllowed {
+                    reason: "Automaton without states".into(),
+                },
+                info: Some(info.clone()),
             });
         }
         for state in automata[name].states.iter() {
             if let StateType::State(comp, true, _) = &state.typ {
                 if comp.is_none() {
                     if initial_state.is_some() {
-                        self.errors.push(Error::NotAllowed {
-                            reason: "Having multiple initial states".into(),
-                            info: state.name.info.clone(),
+                        self.errors.push(ErrorInfo {
+                            error: Error::NotAllowed {
+                                reason: "Having multiple initial states".into(),
+                            },
+                            info: Some(state.name.info.clone()),
                         });
                     } else {
                         initial_state = Some(state.name.name.clone());
                     }
                 } else {
-                    self.errors.push(Error::NotAllowed {
-                        reason: "Marking component state as initial".into(),
-                        info: state.name.info.clone(),
+                    self.errors.push(ErrorInfo {
+                        error: Error::NotAllowed {
+                            reason: "Marking component state as initial".into(),
+                        },
+                        info: Some(state.name.info.clone()),
                     });
                 }
             }
@@ -445,8 +471,11 @@ pub fn flatten_automaton(mut program: Vec<Automaton>, automaton: Rc<str>) -> FAI
                 .insert(automata[&automaton].name.name.clone(), initial);
         }
     } else {
-        ir.errors.push(Error::Other {
-            msg: format!("Unknown starting automaton {}", automaton).into(),
+        ir.errors.push(ErrorInfo {
+            error: Error::Other {
+                msg: format!("Unknown starting automaton {}", automaton).into(),
+            },
+            info: None,
         });
     }
     ir

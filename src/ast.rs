@@ -40,6 +40,7 @@ pub struct Automaton {
     pub desc: Rc<str>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Ast {
     pub automata: Vec<Automaton>,
     pub errors: Vec<Error>,

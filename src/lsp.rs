@@ -215,14 +215,21 @@ fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentD
         errors: logic_errors,
         ..
     } = flatten_automata(automata);
-    let errors: Vec<_> = syntax_errors.iter().chain(logic_errors.iter()).collect();
+    let errors: Vec<_> = syntax_errors
+        .iter()
+        .map(|err| info::ErrorInfo {
+            error: (*err).clone(),
+            info: None,
+        })
+        .chain(logic_errors.into_iter())
+        .collect();
 
     // Find possible errors in the .myst file
     DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
         full_document_diagnostic_report: FullDocumentDiagnosticReport {
             items: errors
                 .iter()
-                .flat_map(|err| error_diagnostic(err))
+                .flat_map(|err| error_diagnostic(&err))
                 .collect(),
             ..Default::default()
         },
@@ -231,24 +238,25 @@ fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentD
     .into()
 }
 
-fn error_diagnostic(err: &info::Error) -> Option<Diagnostic> {
-    let info::Info { line, from, to } = err.info()?;
-    Diagnostic {
-        range: Range {
-            start: Position {
-                line: *line,
-                character: *from,
+fn error_diagnostic(err: &info::ErrorInfo) -> Option<Diagnostic> {
+    match err.info {
+        None => None,
+        Some(info::Info { line, from, to }) => Some(Diagnostic {
+            range: Range {
+                start: Position {
+                    line: line,
+                    character: from,
+                },
+                end: Position {
+                    line: line,
+                    character: to,
+                },
             },
-            end: Position {
-                line: *line,
-                character: *to,
-            },
-        },
-        severity: Some(DiagnosticSeverity::ERROR),
-        message: err.to_string(),
-        ..Default::default()
+            severity: Some(DiagnosticSeverity::ERROR),
+            message: err.error.to_string(),
+            ..Default::default()
+        }),
     }
-    .into()
 }
 
 fn cast_req<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>

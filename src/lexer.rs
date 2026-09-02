@@ -1,15 +1,9 @@
 use std::mem;
 
-use crate::{
-    info::{Error, Info},
-    token::*,
-};
+use crate::token::*;
 
 pub struct Lexer {
     chars: std::iter::Peekable<std::vec::IntoIter<char>>,
-    pub errors: Vec<Error>,
-    line: u32,
-    column: u32,
     description: String,
 }
 
@@ -19,37 +13,21 @@ impl Lexer {
 
         Self {
             chars: chars.into_iter().peekable(),
-            errors: Vec::new(),
-            line: 0,
-            column: 0,
             description: String::new(),
         }
     }
 
     pub fn advance(&mut self) -> Option<char> {
-        if let Some(&ch) = self.chars.peek() {
-            if ch == '\n' {
-                self.line += 1;
-                self.column = 0;
-            } else {
-                self.column += 1;
-            }
-        }
         self.chars.next()
     }
 
     /// Tokenize the entire input
-    pub fn tokenize(&mut self) -> Vec<TokenInfo> {
+    pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
         while let Some(&ch) = self.chars.peek() {
-            if ch.is_whitespace() && ch != '\n' {
-                self.advance();
-                continue;
-            }
             let mut skip = true;
-            let from = self.column;
-            let line = self.line;
             let token = match ch {
+                ' ' => Token::Whitespace,
                 '\n' => Token::Newline,
                 '(' => Token::LParanthesis,
                 ')' => Token::RParanthesis,
@@ -75,16 +53,7 @@ impl Lexer {
                             _ => Token::LBracket,
                         }
                     } else {
-                        self.errors.push(Error::NotTerminated {
-                            start: "`{`".into(),
-                            end: "`}`".into(),
-                            info: Info {
-                                line,
-                                from,
-                                to: self.column,
-                            },
-                        });
-                        continue;
+                        Token::LBracket
                     }
                 }
                 '-' => {
@@ -100,28 +69,10 @@ impl Lexer {
                             }
                             _ => {
                                 skip = false;
-                                self.errors.push(Error::Unknown {
-                                    typ: "character".into(),
-                                    found: "`-`".into(),
-                                    info: Info {
-                                        line,
-                                        from,
-                                        to: self.column,
-                                    },
-                                });
                                 Token::Unknown(ch)
                             }
                         }
                     } else {
-                        self.errors.push(Error::Unknown {
-                            typ: "character".into(),
-                            found: format!("`{}`", ch).into(),
-                            info: Info {
-                                line,
-                                from,
-                                to: self.column,
-                            },
-                        });
                         Token::Unknown(ch)
                     }
                 }
@@ -130,30 +81,12 @@ impl Lexer {
                     self.read_word()
                 }
                 'A'..='Z' | '0'..='9' | '_' | '@' | '&' => Token::Symbol(ch),
-                _ => {
-                    self.errors.push(Error::Unknown {
-                        typ: "character".into(),
-                        found: format!("`{}`", ch).into(),
-                        info: Info {
-                            line,
-                            from,
-                            to: self.column + 1,
-                        },
-                    });
-                    Token::Unknown(ch)
-                }
+                _ => Token::Unknown(ch),
             };
             if skip {
                 self.advance();
             }
-            tokens.push(TokenInfo {
-                token,
-                info: Info {
-                    line,
-                    from,
-                    to: self.column,
-                },
-            });
+            tokens.push(token);
         }
         // Return the tokens
         tokens
@@ -172,16 +105,12 @@ impl Lexer {
     }
 
     fn read_block_comment(&mut self) -> Token {
-        let line = self.line;
-        let to = self.column;
         let mut comment = String::new();
-        let mut terminated = false;
         while let Some(c) = self.advance() {
             if c == '-' {
                 if let Some(c2) = self.advance() {
                     if c2 == '}' {
                         self.description.push_str(&comment);
-                        terminated = true;
                         break;
                     } else {
                         comment.push(c);
@@ -192,22 +121,10 @@ impl Lexer {
                 comment.push(c);
             }
         }
-        if !terminated {
-            self.errors.push(Error::NotTerminated {
-                start: "block comment".into(),
-                end: "`-}`".into(),
-                info: Info {
-                    line,
-                    from: to - 2,
-                    to,
-                },
-            })
-        }
         Token::Comment(comment.into())
     }
 
     fn read_word(&mut self) -> Token {
-        let from = self.column;
         let mut word = String::new();
         while let Some(&c) = self.chars.peek() {
             if c.is_whitespace() || "(){};,:/-.^@&".contains(c) {
@@ -217,19 +134,15 @@ impl Lexer {
                 self.advance();
             }
         }
-        if word
-            .chars()
-            .any(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
-        {
-            self.errors.push(Error::MalformedIdentifier {
-                ident: word.clone().into(),
-                info: Info {
-                    line: self.line,
-                    from: from,
-                    to: self.column,
-                },
-            });
-        }
+        // TODO: move to cst
+        // if word
+        //     .chars()
+        //     .any(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
+        // {
+        //     self.errors.push(Error::MalformedIdentifier {
+        //         ident: word.clone().into(),
+        //     });
+        // }
 
         match word.as_str() {
             "automaton" => Token::Automaton,
@@ -263,14 +176,24 @@ mod tests {
         let mut lexer = Lexer::new("  automaton{  accept state acceptstate }   ");
         let tokens = lexer.tokenize();
         assert_eq!(
-            tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
+            tokens,
             vec![
+                Whitespace,
+                Whitespace,
                 Automaton,
                 LBracket,
+                Whitespace,
+                Whitespace,
                 Accept,
+                Whitespace,
                 State,
+                Whitespace,
                 Ident("acceptstate".into(), "".into()),
-                RBracket
+                Whitespace,
+                RBracket,
+                Whitespace,
+                Whitespace,
+                Whitespace
             ]
         );
     }
@@ -280,8 +203,11 @@ mod tests {
         let mut lexer = Lexer::new("initial accept state automaton reject");
         let tokens = lexer.tokenize();
         assert_eq!(
-            tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
-            vec![Initial, Accept, State, Automaton, Reject,]
+            tokens,
+            vec![
+                Initial, Whitespace, Accept, Whitespace, State, Whitespace, Automaton, Whitespace,
+                Reject
+            ]
         );
     }
 
@@ -290,15 +216,18 @@ mod tests {
         let mut lexer = Lexer::new("(){/ -> ., ;}");
         let tokens = lexer.tokenize();
         assert_eq!(
-            tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
+            tokens,
             vec![
                 LParanthesis,
                 RParanthesis,
                 LBracket,
                 Slash,
+                Whitespace,
                 Arrow,
+                Whitespace,
                 Dot,
                 Comma,
+                Whitespace,
                 Semicolon,
                 RBracket
             ]
@@ -310,7 +239,7 @@ mod tests {
         let mut lexer = Lexer::new("ABZ129_@&");
         let tokens = lexer.tokenize();
         assert_eq!(
-            tokens.into_iter().map(|t| t.token).collect::<Vec<_>>(),
+            tokens,
             vec![
                 Symbol('A'),
                 Symbol('B'),
@@ -332,299 +261,109 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                TokenInfo {
-                    token: Automaton,
-                    info: Info {
-                        line: 0,
-                        from: 0,
-                        to: 9
-                    }
-                },
-                TokenInfo {
-                    token: Comment(" This is a line comment\n".into()),
-                    info: Info {
-                        line: 0,
-                        from: 10,
-                        to: 0
-                    }
-                },
-                TokenInfo {
-                    token: Initial,
-                    info: Info {
-                        line: 1,
-                        from: 0,
-                        to: 7
-                    }
-                },
-                TokenInfo {
-                    token: State,
-                    info: Info {
-                        line: 1,
-                        from: 8,
-                        to: 13
-                    }
-                },
-                TokenInfo {
-                    token: Ident("first".into(), "This is a line comment".into()),
-                    info: Info {
-                        line: 1,
-                        from: 14,
-                        to: 19
-                    }
-                },
-                TokenInfo {
-                    token: LBracket,
-                    info: Info {
-                        line: 1,
-                        from: 20,
-                        to: 21
-                    }
-                },
-                TokenInfo {
-                    token: Newline,
-                    info: Info {
-                        line: 1,
-                        from: 21,
-                        to: 0
-                    }
-                },
-                TokenInfo {
-                    token: Symbol('A'),
-                    info: Info {
-                        line: 2,
-                        from: 1,
-                        to: 2
-                    }
-                },
-                TokenInfo {
-                    token: Slash,
-                    info: Info {
-                        line: 2,
-                        from: 3,
-                        to: 4
-                    }
-                },
-                TokenInfo {
-                    token: Symbol('B'),
-                    info: Info {
-                        line: 2,
-                        from: 5,
-                        to: 6
-                    }
-                },
-                TokenInfo {
-                    token: Comma,
-                    info: Info {
-                        line: 2,
-                        from: 6,
-                        to: 7
-                    }
-                },
-                TokenInfo {
-                    token: Symbol('L'),
-                    info: Info {
-                        line: 2,
-                        from: 8,
-                        to: 9
-                    }
-                },
-                TokenInfo {
-                    token: Arrow,
-                    info: Info {
-                        line: 2,
-                        from: 10,
-                        to: 12
-                    }
-                },
-                TokenInfo {
-                    token: Ident("second_state2".into(), "".into()),
-                    info: Info {
-                        line: 2,
-                        from: 13,
-                        to: 26
-                    }
-                },
-                TokenInfo {
-                    token: Semicolon,
-                    info: Info {
-                        line: 2,
-                        from: 26,
-                        to: 27
-                    }
-                },
-                TokenInfo {
-                    token: Comment(" This \n - is a - \n multiline comment ".into()),
-                    info: Info {
-                        line: 2,
-                        from: 28,
-                        to: 21
-                    }
-                },
-                TokenInfo {
-                    token: RBracket,
-                    info: Info {
-                        line: 4,
-                        from: 21,
-                        to: 22
-                    }
-                },
-                TokenInfo {
-                    token: RBracket,
-                    info: Info {
-                        line: 4,
-                        from: 22,
-                        to: 23
-                    }
-                },
+                Automaton,
+                Whitespace,
+                Comment(" This is a line comment\n".into()),
+                Initial,
+                Whitespace,
+                State,
+                Whitespace,
+                Ident("first".into(), "This is a line comment".into()),
+                Whitespace,
+                LBracket,
+                Newline,
+                Whitespace,
+                Symbol('A'),
+                Whitespace,
+                Slash,
+                Whitespace,
+                Symbol('B'),
+                Comma,
+                Whitespace,
+                Symbol('L'),
+                Whitespace,
+                Arrow,
+                Whitespace,
+                Ident("second_state2".into(), "".into()),
+                Semicolon,
+                Whitespace,
+                Comment(" This \n - is a - \n multiline comment ".into()),
+                RBracket,
+                RBracket
             ]
         );
     }
 
-    #[test]
-    fn test_invalid_character() {
-        let mut lexer = Lexer::new("automaton ?");
-        lexer.tokenize();
+    // TODO: move to cst tests
+    // #[test]
+    // fn test_invalid_character() {
+    //     let mut lexer = Lexer::new("automaton ?");
+    //     lexer.tokenize();
 
-        assert_eq!(
-            lexer.errors,
-            vec![Error::Unknown {
-                typ: "character".into(),
-                found: "`?`".into(),
-                info: Info {
-                    line: 0,
-                    from: 10,
-                    to: 11
-                }
-            }]
-        );
-    }
+    //     assert_eq!(
+    //         lexer.errors,
+    //         vec![Error::Unknown {
+    //             typ: "character".into(),
+    //             found: "`?`".into(),
+    //         }]
+    //     );
+    // }
 
-    #[test]
-    fn test_invalid_identifier() {
-        let mut lexer = Lexer::new("state camelCase");
-        lexer.tokenize();
+    // TODO: move to cst tests
+    // #[test]
+    // fn test_invalid_identifier() {
+    //     let mut lexer = Lexer::new("state camelCase");
+    //     lexer.tokenize();
 
-        assert_eq!(
-            lexer.errors,
-            vec![Error::MalformedIdentifier {
-                ident: "camelCase".into(),
-                info: Info {
-                    line: 0,
-                    from: 6,
-                    to: 15
-                }
-            }]
-        );
-    }
+    //     assert_eq!(
+    //         lexer.errors,
+    //         vec![Error::MalformedIdentifier {
+    //             ident: "camelCase".into(),
+    //         }]
+    //     );
+    // }
 
-    #[test]
-    fn test_mutliple_errors() {
-        let mut lexer = Lexer::new("stAte \n#q0 -ups {- some\nthing - } ");
-        let tokens = lexer.tokenize();
+    // TODO: move to cst tests
+    // #[test]
+    // fn test_mutliple_errors() {
+    //     let mut lexer = Lexer::new("stAte \n#q0 -ups {- some\nthing - } ");
+    //     let tokens = lexer.tokenize();
 
-        assert_eq!(
-            tokens,
-            vec![
-                TokenInfo {
-                    token: Ident("stAte".into(), "".into()),
-                    info: Info {
-                        line: 0,
-                        from: 0,
-                        to: 5
-                    }
-                },
-                TokenInfo {
-                    token: Newline,
-                    info: Info {
-                        line: 0,
-                        from: 6,
-                        to: 0
-                    }
-                },
-                TokenInfo {
-                    token: Unknown('#'),
-                    info: Info {
-                        line: 1,
-                        from: 0,
-                        to: 1
-                    }
-                },
-                TokenInfo {
-                    token: Ident("q0".into(), "".into()),
-                    info: Info {
-                        line: 1,
-                        from: 1,
-                        to: 3
-                    }
-                },
-                TokenInfo {
-                    token: Unknown('-'),
-                    info: Info {
-                        line: 1,
-                        from: 4,
-                        to: 5
-                    }
-                },
-                TokenInfo {
-                    token: Ident("ups".into(), "".into()),
-                    info: Info {
-                        line: 1,
-                        from: 5,
-                        to: 8
-                    }
-                },
-                TokenInfo {
-                    token: Comment(" some\nthing - } ".into()),
-                    info: Info {
-                        line: 1,
-                        from: 9,
-                        to: 10
-                    }
-                }
-            ]
-        );
+    //     assert_eq!(
+    //         tokens,
+    //         vec![
+    //             Ident("stAte".into(), "".into()),
+    //             Whitespace,
+    //             Newline,
+    //             Unknown('#'),
+    //             Ident("q0".into(), "".into()),
+    //             Whitespace,
+    //             Unknown('-'),
+    //             Ident("ups".into(), "".into()),
+    //             Whitespace,
+    //             Comment(" some\nthing - } ".into())
+    //         ]
+    //     );
 
-        assert_eq!(
-            lexer.errors,
-            vec![
-                Error::MalformedIdentifier {
-                    ident: "stAte".into(),
-                    info: Info {
-                        line: 0,
-                        from: 0,
-                        to: 5
-                    }
-                },
-                Error::Unknown {
-                    typ: "character".into(),
-                    found: "`#`".into(),
-                    info: Info {
-                        line: 1,
-                        from: 0,
-                        to: 1
-                    }
-                },
-                Error::Unknown {
-                    typ: "character".into(),
-                    found: "`-`".into(),
-                    info: Info {
-                        line: 1,
-                        from: 4,
-                        to: 5
-                    }
-                },
-                Error::NotTerminated {
-                    start: "block comment".into(),
-                    end: "`-}`".into(),
-                    info: Info {
-                        line: 1,
-                        from: 9,
-                        to: 11
-                    }
-                }
-            ]
-        );
-    }
+    //     assert_eq!(
+    //         lexer.errors,
+    //         vec![
+    //             Error::MalformedIdentifier { ident: "stAte" },
+    //             Error::Unknown {
+    //                 typ: "character",
+    //                 found: "`#`"
+    //             },
+    //             Error::Unknown {
+    //                 typ: "character",
+    //                 found: "`-`"
+    //             },
+    //             Error::NotTerminated {
+    //                 start: "block comment",
+    //                 end: "`-}`"
+    //             }
+    //         ]
+    //     );
+    // }
 
     #[test]
     fn test_descriptions() {
@@ -634,150 +373,37 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                TokenInfo {
-                    token: Comment(" This turing machine \n".into()),
-                    info: Info {
-                        line: 0,
-                        from: 0,
-                        to: 0
-                    }
-                },
-                TokenInfo {
-                    token: Comment(" is pretty neat \n".into()),
-                    info: Info {
-                        line: 1,
-                        from: 1,
-                        to: 0
-                    }
-                },
-                TokenInfo {
-                    token: Automaton,
-                    info: Info {
-                        line: 2,
-                        from: 1,
-                        to: 10
-                    }
-                },
-                TokenInfo {
-                    token: Ident("add".into(), "This turing machine \n is pretty neat".into()),
-                    info: Info {
-                        line: 2,
-                        from: 11,
-                        to: 14
-                    }
-                },
-                TokenInfo {
-                    token: LParanthesis,
-                    info: Info {
-                        line: 2,
-                        from: 14,
-                        to: 15
-                    }
-                },
-                TokenInfo {
-                    token: Ident("a".into(), "".into()),
-                    info: Info {
-                        line: 2,
-                        from: 15,
-                        to: 16
-                    }
-                },
-                TokenInfo {
-                    token: As,
-                    info: Info {
-                        line: 2,
-                        from: 17,
-                        to: 19
-                    }
-                },
-                TokenInfo {
-                    token: Ident("b".into(), "".into()),
-                    info: Info {
-                        line: 2,
-                        from: 20,
-                        to: 21
-                    }
-                },
-                TokenInfo {
-                    token: RParanthesis,
-                    info: Info {
-                        line: 2,
-                        from: 21,
-                        to: 22
-                    }
-                },
-                TokenInfo {
-                    token: LBracket,
-                    info: Info {
-                        line: 2,
-                        from: 23,
-                        to: 24
-                    }
-                },
-                TokenInfo {
-                    token: Newline,
-                    info: Info {
-                        line: 2,
-                        from: 25,
-                        to: 0
-                    }
-                },
-                TokenInfo {
-                    token: Comment("other ignored comment\n".into()),
-                    info: Info {
-                        line: 3,
-                        from: 0,
-                        to: 0
-                    }
-                },
-                TokenInfo {
-                    token: RBracket,
-                    info: Info {
-                        line: 4,
-                        from: 1,
-                        to: 2
-                    }
-                },
-                TokenInfo {
-                    token: Comment(" this \n state ".into()),
-                    info: Info {
-                        line: 4,
-                        from: 3,
-                        to: 9
-                    }
-                },
-                TokenInfo {
-                    token: Comment(" is cool \n".into()),
-                    info: Info {
-                        line: 5,
-                        from: 10,
-                        to: 0
-                    }
-                },
-                TokenInfo {
-                    token: State,
-                    info: Info {
-                        line: 6,
-                        from: 1,
-                        to: 6
-                    }
-                },
-                TokenInfo {
-                    token: Ident("ups".into(), "this \n state  is cool".into()),
-                    info: Info {
-                        line: 6,
-                        from: 7,
-                        to: 10
-                    }
-                },
-                TokenInfo {
-                    token: Comment(" some\nthing - } ".into()),
-                    info: Info {
-                        line: 6,
-                        from: 11,
-                        to: 10
-                    }
-                }
+                Comment(" This turing machine \n".into()),
+                Whitespace,
+                Comment(" is pretty neat \n".into()),
+                Whitespace,
+                Automaton,
+                Whitespace,
+                Ident("add".into(), "This turing machine \n is pretty neat".into()),
+                LParanthesis,
+                Ident("a".into(), "".into()),
+                Whitespace,
+                As,
+                Whitespace,
+                Ident("b".into(), "".into()),
+                RParanthesis,
+                Whitespace,
+                LBracket,
+                Whitespace,
+                Newline,
+                Comment("other ignored comment\n".into()),
+                Whitespace,
+                RBracket,
+                Whitespace,
+                Comment(" this \n state ".into()),
+                Whitespace,
+                Comment(" is cool \n".into()),
+                Whitespace,
+                State,
+                Whitespace,
+                Ident("ups".into(), "this \n state  is cool".into()),
+                Whitespace,
+                Comment(" some\nthing - } ".into())
             ]
         );
     }

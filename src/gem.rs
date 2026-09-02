@@ -2,6 +2,7 @@
 // will also handle gem(import) resolution
 
 use crate::ast::Ast;
+use crate::info::{Error, ErrorInfo};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::token::Token;
@@ -12,20 +13,23 @@ pub fn parse_ast(code: &str) -> Ast {
     let tokens = lexer
         .tokenize()
         .into_iter()
-        .filter(|t| match t.token {
+        .filter(|t| match t {
             Token::Newline | Token::Comment(_) | Token::Unknown(_) => false,
             _ => true,
         })
         .collect();
 
     let parser = Parser::new(tokens);
-    let Ast { automata, errors } = parser.parse();
-    Ast {
-        automata,
-        errors: lexer.errors.into_iter().chain(errors).collect(),
-    }
+    parser.parse()
 }
 
-pub fn load_ast(filename: &str) -> Result<Ast, std::io::Error> {
-    fs::read_to_string(filename).map(|code| parse_ast(&code))
+pub fn load_ast(filename: &str) -> Result<Ast, ErrorInfo> {
+    fs::read_to_string(filename)
+        .map(|code| parse_ast(&code))
+        .map_err(|err| ErrorInfo {
+            error: Error::Other {
+                msg: err.to_string().into(),
+            },
+            info: None,
+        })
 }
