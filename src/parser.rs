@@ -1,8 +1,9 @@
 use std::rc::Rc;
 
-use crate::ast::*;
+use crate::ast;
+use crate::cst;
 use crate::info::*;
-use crate::token::*;
+use crate::token::Token;
 pub struct Parser {
     tokens: Vec<Token>,
     pub errors: Vec<Error>,
@@ -18,166 +19,136 @@ impl Parser {
         }
     }
 
-    // fn is_at_end(&self) -> bool {
-    //     self.pos >= self.tokens.len()
-    // }
+    fn is_at_end(&self) -> bool {
+        self.pos >= self.tokens.len()
+    }
 
-    // fn peek(&self) -> Option<&TokenInfo> {
-    //     self.tokens.get(self.pos)
-    // }
+    fn peek(&self) -> Option<&Token> {
+        self.tokens.get(self.pos)
+    }
 
-    // fn peek_token(&self) -> Option<&Token> {
-    //     self.tokens.get(self.pos).map(|t| &t.token)
-    // }
+    fn advance(&mut self) -> Option<&Token> {
+        if !self.is_at_end() {
+            let token = &self.tokens[self.pos];
+            self.pos += 1;
+            Some(token)
+        } else {
+            None
+        }
+    }
 
-    // fn advance(&mut self) -> Option<&TokenInfo> {
-    //     if !self.is_at_end() {
-    //         let token = &self.tokens[self.pos];
-    //         self.pos += 1;
-    //         Some(token)
-    //     } else {
-    //         None
-    //     }
-    // }
+    fn expect(&mut self, expected: Token) -> Result<(), Error> {
+        match self.peek() {
+            Some(t) if *t == expected => {
+                self.advance();
+                Ok(())
+            }
+            Some(token) => Err(Error::Unexpected {
+                token: token.clone(),
+                expected: expected.into(),
+            }),
+            None => Err(Error::EOF {
+                expected: expected.into(),
+            }),
+        }
+    }
 
-    // fn expect(&mut self, expected: Token) -> Result<(), Error> {
-    //     match self.peek() {
-    //         Some(t) if t.token == expected => {
-    //             self.advance();
-    //             Ok(())
-    //         }
-    //         Some(token) => Err(Error::Unexpected {
-    //             token: token.clone(),
-    //             expected: expected.into(),
-    //         }),
-    //         None => Err(Error::EOF {
-    //             expected: expected.into(),
-    //         }),
-    //     }
-    // }
+    fn recover(&mut self, start: usize, until: &[Token], before: &[Token]) -> Vec<Token> {
+        self.pos = start;
+        let mut tokens = vec![];
+        while let Some(token) = self.peek() {
+            if before.contains(token) {
+                break;
+            }
+            tokens.push(token.clone());
+            if until.contains(token) {
+                break;
+            }
+        }
+        tokens
+    }
 
-    // fn expect_on_line(&mut self, expected: Token, line: u32) -> Result<(), Error> {
-    //     match self.peek() {
-    //         Some(token) if token.info.line != line => Err(Error::Missing {
-    //             expected: expected.into(),
-    //             info: self.lines[line as usize].clone(),
-    //         }),
-    //         Some(token) if token.token != expected => Err(Error::Unexpected {
-    //             token: token.clone(),
-    //             expected: expected.into(),
-    //         }),
-    //         Some(_) => {
-    //             self.advance();
-    //             Ok(())
-    //         }
-    //         None => Err(Error::EOF {
-    //             expected: expected.into(),
-    //         }),
-    //     }
-    // }
+    fn parse_whitespace(&mut self) -> usize {
+        let mut w = 0;
+        while Some(&Token::Whitespace) == self.peek() {
+            self.advance();
+            w += 1;
+        }
+        w
+    }
 
-    // fn get_line(&self) -> u32 {
-    //     match self.peek() {
-    //         Some(token) => token.info.line,
-    //         None => (self.lines.len() - 1) as u32,
-    //     }
-    // }
+    fn parse_symbol(&mut self) -> Result<char, Error> {
+        match self.advance() {
+            Some(Token::Newline) => Err(Error::Missing {
+                expected: "symbol".into(),
+            }),
+            Some(Token::Symbol(ch)) => Ok(*ch),
+            Some(token) => Err(Error::Unexpected {
+                token: token.clone(),
+                expected: "symbol".into(),
+            }),
+            None => Err(Error::EOF {
+                expected: "symbol".into(),
+            }),
+        }
+    }
 
-    // fn get_info(&self) -> Info {
-    //     match self.peek() {
-    //         Some(token) => token.info.clone(),
-    //         None => self.lines.last().unwrap().clone(),
-    //     }
-    // }
+    fn parse_move(&mut self) -> Result<cst::Move, Error> {
+        match self.advance() {
+            Some(Token::Newline) => Err(Error::Missing {
+                expected: "move symbol".into(),
+            }),
+            Some(Token::Symbol(ch)) => match ch {
+                'L' => Ok(cst::Move::L),
+                'R' => Ok(cst::Move::R),
+                'N' => Ok(cst::Move::N),
+                _ => Err(Error::Unexpected {
+                    token: Token::Symbol(*ch),
+                    expected: "move symbol".into(),
+                }),
+            },
+            Some(token) => Err(Error::Unexpected {
+                token: token.clone(),
+                expected: "move symbol".into(),
+            }),
+            None => Err(Error::EOF {
+                expected: "move symbol".into(),
+            }),
+        }
+    }
 
-    // fn parse_symbol(&mut self, line: u32) -> Result<char, Error> {
-    //     match self.advance() {
-    //         Some(token) if token.info.line != line => Err(Error::Missing {
-    //             expected: "symbol".into(),
-    //             info: self.lines[line as usize].clone(),
-    //         }),
-    //         Some(token) => match &token.token {
-    //             Token::Symbol(ch) => Ok(*ch),
-    //             _ => Err(Error::Unexpected {
-    //                 token: token.clone(),
-    //                 expected: "symbol".into(),
-    //             }),
-    //         },
-    //         None => Err(Error::EOF {
-    //             expected: "symbol".into(),
-    //         }),
-    //     }
-    // }
+    fn parse_ident(&mut self) -> Result<(Rc<str>, Rc<str>), Error> {
+        match self.peek() {
+            Some(Token::Newline) => Err(Error::Missing {
+                expected: "identifier".into(),
+            }),
+            Some(token) => match &token {
+                Token::Ident(name, description) => {
+                    let res = (name.clone(), description.clone());
+                    self.advance();
+                    Ok(res)
+                }
+                _ => Err(Error::Unexpected {
+                    token: token.clone(),
+                    expected: "identifier".into(),
+                }),
+            },
+            None => Err(Error::EOF {
+                expected: "identifier".into(),
+            }),
+        }
+    }
 
-    // fn parse_move(&mut self, line: u32) -> Result<Move, Error> {
-    //     match self.advance() {
-    //         Some(token) if token.info.line != line => Err(Error::Missing {
-    //             expected: "move symbol".into(),
-    //             info: self.lines[line as usize].clone(),
-    //         }),
-    //         Some(token) => match &token.token {
-    //             Token::Symbol(ch) => match ch {
-    //                 'L' => Ok(Move::L),
-    //                 'R' => Ok(Move::R),
-    //                 'N' => Ok(Move::N),
-    //                 _ => Err(Error::Unexpected {
-    //                     token: token.clone(),
-    //                     expected: "move symbol".into(),
-    //                 }),
-    //             },
-    //             _ => Err(Error::Unexpected {
-    //                 token: token.clone(),
-    //                 expected: "move symbol".into(),
-    //             }),
-    //         },
-    //         None => Err(Error::EOF {
-    //             expected: "symbol".into(),
-    //         }),
-    //     }
-    // }
-
-    // fn parse_ident(&mut self, line: u32) -> Result<(StringInfo, Rc<str>), Error> {
-    //     match self.peek() {
-    //         Some(token) if token.info.line != line => Err(Error::Missing {
-    //             expected: "identifier".into(),
-    //             info: self.lines[line as usize].clone(),
-    //         }),
-    //         Some(token) => match &token.token {
-    //             Token::Ident(name, description) => {
-    //                 let res = Ok((
-    //                     StringInfo {
-    //                         name: name.clone(),
-    //                         info: token.info.clone(),
-    //                     },
-    //                     description.clone(),
-    //                 ));
-    //                 self.advance();
-    //                 res
-    //             }
-    //             _ => Err(Error::Unexpected {
-    //                 token: token.clone(),
-    //                 expected: "identifier".into(),
-    //             }),
-    //         },
-    //         None => Err(Error::EOF {
-    //             expected: "identifier".into(),
-    //         }),
-    //     }
-    // }
-
-    // fn parse_state_name(
-    //     &mut self,
-    //     line: u32,
-    // ) -> Result<(StringInfo, Option<StringInfo>, Rc<str>), Error> {
-    //     let (name, desc) = self.parse_ident(line)?;
-    //     match self.peek() {
-    //         Some(token) if token.token == Token::Dot && token.info.line == line => {
-    //             self.advance();
-    //             Ok((self.parse_ident(line)?.0, Some(name), desc))
-    //         }
-    //         _ => Ok((name, None, desc)),
-    //     }
-    // }
+    fn parse_state_name(&mut self) -> Result<(Rc<str>, Option<Rc<str>>, Rc<str>), Error> {
+        let (name, desc) = self.parse_ident()?;
+        match self.peek() {
+            Some(Token::Dot) => {
+                self.advance();
+                Ok((self.parse_ident()?.0, Some(name), desc))
+            }
+            _ => Ok((name, None, desc)),
+        }
+    }
 
     // fn parse_transition(&mut self) -> Result<Transition, Error> {
     //     let line = self.get_line();
@@ -196,6 +167,72 @@ impl Parser {
     //         state: (state, parent),
     //     })
     // }
+
+    fn parse_transition(&mut self) -> Result<cst::Transition, Error> {
+        let read = self.parse_symbol()?;
+        let w1 = self.parse_whitespace();
+        self.expect(Token::Slash)?;
+        let w2 = self.parse_whitespace();
+        let write = self.parse_symbol()?;
+        let w3 = self.parse_whitespace();
+        self.expect(Token::Comma)?;
+        let w4 = self.parse_whitespace();
+        let mov = self.parse_move()?;
+        let w5 = self.parse_whitespace();
+        self.expect(Token::Arrow)?;
+        let w6 = self.parse_whitespace();
+        let (state, parent, _) = self.parse_state_name()?;
+        let w7 = self.parse_whitespace();
+        self.expect(Token::Semicolon)?;
+
+        Ok(cst::Transition {
+            read,
+            write,
+            mov,
+            state: (state, parent),
+            w: [w1, w2, w3, w4, w5, w6, w7].into(),
+        })
+    }
+
+    fn parse_transition_scope(&mut self) -> cst::TransitionScope {
+        let start = self.pos;
+        match self.advance() {
+            None => cst::TransitionScope::ErrorTokens {
+                error: Error::EOF {
+                    expected: "`}`".into(),
+                },
+                location: None,
+                tokens: Vec::new(),
+            },
+            Some(token) => match token {
+                Token::Whitespace => cst::TransitionScope::Whitespace,
+                Token::Newline => cst::TransitionScope::Newline,
+                Token::Comment(msg) => cst::TransitionScope::Comment(msg.clone()),
+                Token::LBracket => cst::TransitionScope::ErrorTokens {
+                    error: Error::NotAllowed {
+                        reason: "Nested scope in transitions".into(),
+                    },
+                    location: None,
+                    tokens: self.recover(start, &[Token::RBracket], &[]),
+                },
+                _ => {
+                    self.pos -= 1;
+                    match self.parse_transition() {
+                        Ok(transition) => cst::TransitionScope::Transition(transition),
+                        Err(error) => cst::TransitionScope::ErrorTokens {
+                            error,
+                            location: Some(self.pos - start),
+                            tokens: self.recover(
+                                start,
+                                &[Token::Newline, Token::Semicolon],
+                                &[Token::RBracket],
+                            ),
+                        },
+                    }
+                }
+            },
+        }
+    }
 
     // fn parse_transition_recover(&mut self) -> Option<Transition> {
     //     // Error recovery
@@ -483,7 +520,7 @@ impl Parser {
     //     components
     // }
 
-    pub fn parse_automaton(&mut self) -> Option<Automaton> {
+    pub fn parse_automaton(&mut self) -> Option<ast::Automaton> {
         None
         // let line = self.get_line();
 
@@ -569,7 +606,7 @@ impl Parser {
         // })
     }
 
-    pub fn parse(mut self) -> Ast {
+    pub fn parse(mut self) -> ast::Ast {
         let mut automata = Vec::new();
         while self.pos < self.tokens.len() {
             if let Some(automaton) = self.parse_automaton() {
@@ -578,419 +615,419 @@ impl Parser {
                 break;
             }
         }
-        Ast {
+        ast::Ast {
             automata,
             errors: self.errors,
         }
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::ast::Automaton;
-//     use crate::ast::State;
-//     use Token::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cst::*;
+    use Token::*;
 
-//     fn default_info(tokens: Vec<Token>) -> Vec<TokenInfo> {
-//         tokens
-//             .into_iter()
-//             .map(|tok| TokenInfo {
-//                 token: tok,
-//                 info: Info::default(),
-//             })
-//             .collect()
-//     }
+    #[test]
+    fn test_parse_transition() {
+        let tokens = vec![
+            Symbol('A'),
+            Whitespace,
+            Slash,
+            Symbol('B'),
+            Whitespace,
+            Whitespace,
+            Comma,
+            Symbol('L'),
+            Arrow,
+            Ident("s2".into(), "".into()),
+            Whitespace,
+            Semicolon,
+        ];
+        let mut parser = Parser::new(tokens);
+        let t = parser.parse_transition().unwrap();
 
-//     #[test]
-//     fn test_parse_transition() {
-//         let tokens = default_info(vec![
-//             Symbol('A'),
-//             Slash,
-//             Symbol('B'),
-//             Comma,
-//             Symbol('L'),
-//             Arrow,
-//             Ident("s2".into(), "".into()),
-//             Semicolon,
-//         ]);
-//         let mut parser = Parser::new(tokens);
-//         let t = parser.parse_transition().unwrap();
+        assert_eq!(
+            t,
+            Transition {
+                read: 'A',
+                write: 'B',
+                mov: Move::L,
+                state: ("s2".into(), None),
+                w: [1, 0, 2, 0, 0, 0, 1].into()
+            }
+        );
+    }
 
-//         assert_eq!(
-//             t,
-//             Transition {
-//                 read: 'A',
-//                 write: 'B',
-//                 mov: Move::L,
-//                 state: (StringInfo::from("s2"), None)
-//             }
-//         );
-//     }
+    #[test]
+    fn test_parse_transition_error() {
+        let tokens = vec![
+            Symbol('A'),
+            Slash,
+            Ident("bye".into(), "".into()),
+            Comma,
+            Symbol('L'),
+            Arrow,
+            Ident("s2".into(), "".into()),
+            Semicolon,
+        ];
+        let mut parser = Parser::new(tokens);
+        let err = parser.parse_transition().unwrap_err();
 
-//     #[test]
-//     fn test_parse_state() {
-//         let tokens = vec![
-//             Initial,
-//             State,
-//             Ident("first".into(), "this is the initial state".into()),
-//             LBracket,
-//             Symbol('_'),
-//             Slash,
-//             Symbol('@'),
-//             Comma,
-//             Symbol('R'),
-//             Arrow,
-//             Ident("add".into(), "".into()),
-//             Dot,
-//             Ident("input".into(), "".into()),
-//             Semicolon,
-//             RBracket,
-//         ];
-//         let mut parser = Parser::new(default_info(tokens));
-//         let s = parser.parse_state_recover().unwrap();
+        assert_eq!(
+            err,
+            Error::Unexpected {
+                expected: "symbol".into(),
+                token: Ident("bye".into(), "".into())
+            }
+        );
+    }
 
-//         assert_eq!(
-//             s,
-//             State {
-//                 name: StringInfo::from("first"),
-//                 typ: StateType::State(
-//                     None,
-//                     true,
-//                     vec![Transition {
-//                         read: '_',
-//                         write: '@',
-//                         mov: Move::R,
-//                         state: (StringInfo::from("input"), Some(StringInfo::from("add")))
-//                     }]
-//                 ),
-//                 desc: "this is the initial state".into()
-//             }
-//         );
-//     }
+    //     #[test]
+    //     fn test_parse_state() {
+    //         let tokens = vec![
+    //             Initial,
+    //             State,
+    //             Ident("first".into(), "this is the initial state".into()),
+    //             LBracket,
+    //             Symbol('_'),
+    //             Slash,
+    //             Symbol('@'),
+    //             Comma,
+    //             Symbol('R'),
+    //             Arrow,
+    //             Ident("add".into(), "".into()),
+    //             Dot,
+    //             Ident("input".into(), "".into()),
+    //             Semicolon,
+    //             RBracket,
+    //         ];
+    //         let mut parser = Parser::new(default_info(tokens));
+    //         let s = parser.parse_state_recover().unwrap();
 
-//     #[test]
-//     fn test_arrow_state() {
-//         let tokens = default_info(vec![
-//             State,
-//             Ident("x".into(), "could be y".into()),
-//             Dot,
-//             Ident("some_name".into(), "".into()),
-//             Arrow,
-//             Ident("y12".into(), "".into()),
-//             Dot,
-//             Ident("some_name2".into(), "".into()),
-//             Semicolon,
-//         ]);
-//         let mut parser = Parser::new(tokens);
-//         let s = parser.parse_state_recover().unwrap();
+    //         assert_eq!(
+    //             s,
+    //             State {
+    //                 name: StringInfo::from("first"),
+    //                 typ: StateType::State(
+    //                     None,
+    //                     true,
+    //                     vec![Transition {
+    //                         read: '_',
+    //                         write: '@',
+    //                         mov: Move::R,
+    //                         state: (StringInfo::from("input"), Some(StringInfo::from("add")))
+    //                     }]
+    //                 ),
+    //                 desc: "this is the initial state".into()
+    //             }
+    //         );
+    //     }
 
-//         assert_eq!(
-//             s,
-//             State {
-//                 name: StringInfo::from("some_name"),
-//                 typ: StateType::State(
-//                     Some(StringInfo::from("x")),
-//                     false,
-//                     vec![Transition {
-//                         read: '_',
-//                         write: '_',
-//                         mov: Move::N,
-//                         state: (
-//                             StringInfo::from("some_name2"),
-//                             Some(StringInfo::from("y12"))
-//                         )
-//                     }]
-//                 ),
-//                 desc: "could be y".into()
-//             }
-//         );
-//     }
+    //     #[test]
+    //     fn test_arrow_state() {
+    //         let tokens = default_info(vec![
+    //             State,
+    //             Ident("x".into(), "could be y".into()),
+    //             Dot,
+    //             Ident("some_name".into(), "".into()),
+    //             Arrow,
+    //             Ident("y12".into(), "".into()),
+    //             Dot,
+    //             Ident("some_name2".into(), "".into()),
+    //             Semicolon,
+    //         ]);
+    //         let mut parser = Parser::new(tokens);
+    //         let s = parser.parse_state_recover().unwrap();
 
-//     #[test]
-//     fn test_final_states() {
-//         let tokens = vec![
-//             Accept,
-//             State,
-//             Ident("done".into(), "final state".into()),
-//             Semicolon,
-//         ];
-//         let mut parser = Parser::new(default_info(tokens));
-//         let s = parser.parse_state_recover().unwrap();
+    //         assert_eq!(
+    //             s,
+    //             State {
+    //                 name: StringInfo::from("some_name"),
+    //                 typ: StateType::State(
+    //                     Some(StringInfo::from("x")),
+    //                     false,
+    //                     vec![Transition {
+    //                         read: '_',
+    //                         write: '_',
+    //                         mov: Move::N,
+    //                         state: (
+    //                             StringInfo::from("some_name2"),
+    //                             Some(StringInfo::from("y12"))
+    //                         )
+    //                     }]
+    //                 ),
+    //                 desc: "could be y".into()
+    //             }
+    //         );
+    //     }
 
-//         assert_eq!(
-//             s,
-//             State {
-//                 name: StringInfo::from("done"),
-//                 typ: StateType::Accept,
-//                 desc: "final state".into()
-//             }
-//         );
+    //     #[test]
+    //     fn test_final_states() {
+    //         let tokens = vec![
+    //             Accept,
+    //             State,
+    //             Ident("done".into(), "final state".into()),
+    //             Semicolon,
+    //         ];
+    //         let mut parser = Parser::new(default_info(tokens));
+    //         let s = parser.parse_state_recover().unwrap();
 
-//         let tokens = vec![Reject, State, Ident("over".into(), "".into()), Semicolon];
-//         let mut parser = Parser::new(default_info(tokens));
-//         let s = parser.parse_state_recover().unwrap();
+    //         assert_eq!(
+    //             s,
+    //             State {
+    //                 name: StringInfo::from("done"),
+    //                 typ: StateType::Accept,
+    //                 desc: "final state".into()
+    //             }
+    //         );
 
-//         assert_eq!(
-//             s,
-//             State {
-//                 name: StringInfo::from("over"),
-//                 typ: StateType::Reject,
-//                 desc: "".into()
-//             }
-//         );
-//     }
+    //         let tokens = vec![Reject, State, Ident("over".into(), "".into()), Semicolon];
+    //         let mut parser = Parser::new(default_info(tokens));
+    //         let s = parser.parse_state_recover().unwrap();
 
-//     #[test]
-//     fn test_automaton() {
-//         let tokens = vec![
-//             Automaton,
-//             Ident("main".into(), "entry\npoint".into()),
-//             LParanthesis,
-//             Ident("add".into(), "".into()),
-//             As,
-//             Ident("a1".into(), "".into()),
-//             Comma,
-//             Ident("other_auto".into(), "".into()),
-//             As,
-//             Ident("unused".into(), "".into()),
-//             RParanthesis,
-//             LBracket,
-//             Initial,
-//             State,
-//             Ident("start".into(), "first state".into()),
-//             LBracket,
-//             Symbol('_'),
-//             Slash,
-//             Symbol('0'),
-//             Comma,
-//             Symbol('N'),
-//             Arrow,
-//             Ident("a1".into(), "".into()),
-//             Dot,
-//             Ident("input".into(), "".into()),
-//             Semicolon,
-//             RBracket,
-//             State,
-//             Ident("a1".into(), "final state \n of a \n component".into()),
-//             Dot,
-//             Ident("output".into(), "".into()),
-//             Arrow,
-//             Ident("done".into(), "".into()),
-//             Semicolon,
-//             Accept,
-//             State,
-//             Ident("done".into(), "".into()),
-//             Semicolon,
-//             RBracket,
-//         ];
-//         let mut parser = Parser::new(default_info(tokens));
-//         let a = parser.parse_automaton().unwrap();
+    //         assert_eq!(
+    //             s,
+    //             State {
+    //                 name: StringInfo::from("over"),
+    //                 typ: StateType::Reject,
+    //                 desc: "".into()
+    //             }
+    //         );
+    //     }
 
-//         assert_eq!(
-//             a,
-//             Automaton {
-//                 name: StringInfo::from("main"),
-//                 components: vec![
-//                     (StringInfo::from("add"), StringInfo::from("a1")),
-//                     (StringInfo::from("other_auto"), StringInfo::from("unused"))
-//                 ],
-//                 states: vec![
-//                     State {
-//                         name: StringInfo::from("start"),
-//                         typ: StateType::State(
-//                             None,
-//                             true,
-//                             vec![Transition {
-//                                 read: '_',
-//                                 write: '0',
-//                                 mov: Move::N,
-//                                 state: (StringInfo::from("input"), Some(StringInfo::from("a1")))
-//                             }]
-//                         ),
-//                         desc: "first state".into()
-//                     },
-//                     State {
-//                         name: StringInfo::from("output"),
-//                         typ: StateType::State(
-//                             Some(StringInfo::from("a1")),
-//                             false,
-//                             vec![Transition {
-//                                 read: '_',
-//                                 write: '_',
-//                                 mov: Move::N,
-//                                 state: (StringInfo::from("done"), None)
-//                             }]
-//                         ),
-//                         desc: "final state \n of a \n component".into()
-//                     },
-//                     State {
-//                         name: StringInfo::from("done"),
-//                         typ: StateType::Accept,
-//                         desc: "".into()
-//                     }
-//                 ],
-//                 desc: "entry\npoint".into()
-//             }
-//         );
-//     }
+    //     #[test]
+    //     fn test_automaton() {
+    //         let tokens = vec![
+    //             Automaton,
+    //             Ident("main".into(), "entry\npoint".into()),
+    //             LParanthesis,
+    //             Ident("add".into(), "".into()),
+    //             As,
+    //             Ident("a1".into(), "".into()),
+    //             Comma,
+    //             Ident("other_auto".into(), "".into()),
+    //             As,
+    //             Ident("unused".into(), "".into()),
+    //             RParanthesis,
+    //             LBracket,
+    //             Initial,
+    //             State,
+    //             Ident("start".into(), "first state".into()),
+    //             LBracket,
+    //             Symbol('_'),
+    //             Slash,
+    //             Symbol('0'),
+    //             Comma,
+    //             Symbol('N'),
+    //             Arrow,
+    //             Ident("a1".into(), "".into()),
+    //             Dot,
+    //             Ident("input".into(), "".into()),
+    //             Semicolon,
+    //             RBracket,
+    //             State,
+    //             Ident("a1".into(), "final state \n of a \n component".into()),
+    //             Dot,
+    //             Ident("output".into(), "".into()),
+    //             Arrow,
+    //             Ident("done".into(), "".into()),
+    //             Semicolon,
+    //             Accept,
+    //             State,
+    //             Ident("done".into(), "".into()),
+    //             Semicolon,
+    //             RBracket,
+    //         ];
+    //         let mut parser = Parser::new(default_info(tokens));
+    //         let a = parser.parse_automaton().unwrap();
 
-//     #[test]
-//     fn test_parse_transition_error() {
-//         let tokens = default_info(vec![
-//             Symbol('A'),
-//             Slash,
-//             Ident("bye".into(), "".into()),
-//             Comma,
-//             Symbol('L'),
-//             Arrow,
-//             Ident("s2".into(), "".into()),
-//             Semicolon,
-//         ]);
-//         let mut parser = Parser::new(tokens);
-//         let result = parser.parse_transition();
+    //         assert_eq!(
+    //             a,
+    //             Automaton {
+    //                 name: StringInfo::from("main"),
+    //                 components: vec![
+    //                     (StringInfo::from("add"), StringInfo::from("a1")),
+    //                     (StringInfo::from("other_auto"), StringInfo::from("unused"))
+    //                 ],
+    //                 states: vec![
+    //                     State {
+    //                         name: StringInfo::from("start"),
+    //                         typ: StateType::State(
+    //                             None,
+    //                             true,
+    //                             vec![Transition {
+    //                                 read: '_',
+    //                                 write: '0',
+    //                                 mov: Move::N,
+    //                                 state: (StringInfo::from("input"), Some(StringInfo::from("a1")))
+    //                             }]
+    //                         ),
+    //                         desc: "first state".into()
+    //                     },
+    //                     State {
+    //                         name: StringInfo::from("output"),
+    //                         typ: StateType::State(
+    //                             Some(StringInfo::from("a1")),
+    //                             false,
+    //                             vec![Transition {
+    //                                 read: '_',
+    //                                 write: '_',
+    //                                 mov: Move::N,
+    //                                 state: (StringInfo::from("done"), None)
+    //                             }]
+    //                         ),
+    //                         desc: "final state \n of a \n component".into()
+    //                     },
+    //                     State {
+    //                         name: StringInfo::from("done"),
+    //                         typ: StateType::Accept,
+    //                         desc: "".into()
+    //                     }
+    //                 ],
+    //                 desc: "entry\npoint".into()
+    //             }
+    //         );
+    //     }
 
-//         assert!(result.is_err());
-//     }
+    //     #[test]
+    //     fn test_parse_state_error() {
+    //         let tokens = default_info(vec![State, Ident("some".into(), "".into()), LBracket]);
+    //         let mut parser = Parser::new(tokens);
+    //         parser.parse_state_recover();
+    //         assert_eq!(
+    //             parser.errors,
+    //             vec![Error::EOF {
+    //                 expected: "`}`".into()
+    //             }]
+    //         );
 
-//     #[test]
-//     fn test_parse_state_error() {
-//         let tokens = default_info(vec![State, Ident("some".into(), "".into()), LBracket]);
-//         let mut parser = Parser::new(tokens);
-//         parser.parse_state_recover();
-//         assert_eq!(
-//             parser.errors,
-//             vec![Error::EOF {
-//                 expected: "`}`".into()
-//             }]
-//         );
+    //         let tokens = default_info(vec![
+    //             State,
+    //             Ident("some".into(), "".into()),
+    //             Arrow,
+    //             Ident("other".into(), "".into()),
+    //         ]);
+    //         let mut parser = Parser::new(tokens);
+    //         parser.parse_state_recover();
+    //         assert_eq!(
+    //             parser.errors,
+    //             vec![Error::EOF {
+    //                 expected: "`;`".into()
+    //             }]
+    //         );
+    //     }
 
-//         let tokens = default_info(vec![
-//             State,
-//             Ident("some".into(), "".into()),
-//             Arrow,
-//             Ident("other".into(), "".into()),
-//         ]);
-//         let mut parser = Parser::new(tokens);
-//         parser.parse_state_recover();
-//         assert_eq!(
-//             parser.errors,
-//             vec![Error::EOF {
-//                 expected: "`;`".into()
-//             }]
-//         );
-//     }
+    //     #[test]
+    //     fn test_parser_lines() {
+    //         let tokens = vec![
+    //             TokenInfo {
+    //                 token: Accept,
+    //                 info: Info {
+    //                     line: 0,
+    //                     from: 3,
+    //                     to: 9,
+    //                 },
+    //             },
+    //             TokenInfo {
+    //                 token: State,
+    //                 info: Info {
+    //                     line: 1,
+    //                     from: 15,
+    //                     to: 20,
+    //                 },
+    //             },
+    //             TokenInfo {
+    //                 token: Ident("whatever".into(), "".into()),
+    //                 info: Info {
+    //                     line: 3,
+    //                     from: 0,
+    //                     to: 8,
+    //                 },
+    //             },
+    //             TokenInfo {
+    //                 token: Semicolon,
+    //                 info: Info {
+    //                     line: 3,
+    //                     from: 8,
+    //                     to: 9,
+    //                 },
+    //             },
+    //         ];
+    //         let parser = Parser::new(tokens);
+    //         assert_eq!(
+    //             parser.lines,
+    //             vec![
+    //                 Info {
+    //                     line: 0,
+    //                     from: 9,
+    //                     to: 10,
+    //                 },
+    //                 Info {
+    //                     line: 1,
+    //                     from: 20,
+    //                     to: 21,
+    //                 },
+    //                 Info {
+    //                     line: 2,
+    //                     from: 0,
+    //                     to: 1,
+    //                 },
+    //                 Info {
+    //                     line: 3,
+    //                     from: 9,
+    //                     to: 10,
+    //                 }
+    //             ]
+    //         );
+    //     }
 
-//     #[test]
-//     fn test_parser_lines() {
-//         let tokens = vec![
-//             TokenInfo {
-//                 token: Accept,
-//                 info: Info {
-//                     line: 0,
-//                     from: 3,
-//                     to: 9,
-//                 },
-//             },
-//             TokenInfo {
-//                 token: State,
-//                 info: Info {
-//                     line: 1,
-//                     from: 15,
-//                     to: 20,
-//                 },
-//             },
-//             TokenInfo {
-//                 token: Ident("whatever".into(), "".into()),
-//                 info: Info {
-//                     line: 3,
-//                     from: 0,
-//                     to: 8,
-//                 },
-//             },
-//             TokenInfo {
-//                 token: Semicolon,
-//                 info: Info {
-//                     line: 3,
-//                     from: 8,
-//                     to: 9,
-//                 },
-//             },
-//         ];
-//         let parser = Parser::new(tokens);
-//         assert_eq!(
-//             parser.lines,
-//             vec![
-//                 Info {
-//                     line: 0,
-//                     from: 9,
-//                     to: 10,
-//                 },
-//                 Info {
-//                     line: 1,
-//                     from: 20,
-//                     to: 21,
-//                 },
-//                 Info {
-//                     line: 2,
-//                     from: 0,
-//                     to: 1,
-//                 },
-//                 Info {
-//                     line: 3,
-//                     from: 9,
-//                     to: 10,
-//                 }
-//             ]
-//         );
-//     }
-
-//     #[test]
-//     fn test_error_components() {
-//         let tokens = default_info(vec![
-//             Automaton,
-//             Ident("ok".into(), "".into()),
-//             LParanthesis,
-//             Ident("place".into(), "".into()),
-//             Ident("xor".into(), "".into()),
-//             Comma,
-//             Ident("good".into(), "".into()),
-//             As,
-//             Ident("dea?d".into(), "".into()),
-//             Comma,
-//             RParanthesis,
-//             LBracket,
-//             RBracket,
-//         ]);
-//         let mut parser = Parser::new(tokens);
-//         let result = parser.parse_automaton();
-//         assert!(result.is_some());
-//         assert_eq!(
-//             parser.errors,
-//             vec![
-//                 Error::Unexpected {
-//                     token: TokenInfo {
-//                         token: Ident("xor".into(), "".into()),
-//                         info: Info {
-//                             line: 0,
-//                             from: 0,
-//                             to: 0
-//                         }
-//                     },
-//                     expected: "keyword `as`".into()
-//                 },
-//                 Error::Unexpected {
-//                     token: TokenInfo {
-//                         token: RParanthesis,
-//                         info: Info {
-//                             line: 0,
-//                             from: 0,
-//                             to: 0
-//                         }
-//                     },
-//                     expected: "identifier".into()
-//                 }
-//             ]
-//         );
-//     }
-// }
+    //     #[test]
+    //     fn test_error_components() {
+    //         let tokens = default_info(vec![
+    //             Automaton,
+    //             Ident("ok".into(), "".into()),
+    //             LParanthesis,
+    //             Ident("place".into(), "".into()),
+    //             Ident("xor".into(), "".into()),
+    //             Comma,
+    //             Ident("good".into(), "".into()),
+    //             As,
+    //             Ident("dea?d".into(), "".into()),
+    //             Comma,
+    //             RParanthesis,
+    //             LBracket,
+    //             RBracket,
+    //         ]);
+    //         let mut parser = Parser::new(tokens);
+    //         let result = parser.parse_automaton();
+    //         assert!(result.is_some());
+    //         assert_eq!(
+    //             parser.errors,
+    //             vec![
+    //                 Error::Unexpected {
+    //                     token: TokenInfo {
+    //                         token: Ident("xor".into(), "".into()),
+    //                         info: Info {
+    //                             line: 0,
+    //                             from: 0,
+    //                             to: 0
+    //                         }
+    //                     },
+    //                     expected: "keyword `as`".into()
+    //                 },
+    //                 Error::Unexpected {
+    //                     token: TokenInfo {
+    //                         token: RParanthesis,
+    //                         info: Info {
+    //                             line: 0,
+    //                             from: 0,
+    //                             to: 0
+    //                         }
+    //                     },
+    //                     expected: "identifier".into()
+    //                 }
+    //             ]
+    //         );
+    //     }
+}
