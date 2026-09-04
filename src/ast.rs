@@ -22,7 +22,7 @@ pub struct Transition {
 pub enum StateType {
     Accept,
     Reject,
-    State(Option<StringInfo>, bool, Vec<Transition>), // name, parent, initial, transitions
+    State(Option<StringInfo>, bool, Vec<Transition>), //  parent, initial, transitions
 }
 
 #[derive(Debug, Clone, PartialEq)]

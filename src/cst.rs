@@ -33,3 +33,48 @@ pub enum TransitionScope {
     Whitespace,
     Newline,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FinalState {
+    // (accept|reject) w* state w* (state);
+    pub accept: bool,
+    pub state: Rc<str>,
+    pub desc: Rc<str>,
+    pub w: Rc<[usize]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransitionState {
+    // (initial?) w* state w* (state|component.state)
+    pub initial: bool,
+    pub state: (Rc<str>, Option<Rc<str>>),
+    pub desc: Rc<str>,
+    pub w: Rc<[usize]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrowState {
+    // (initial?) w* state w* (state|component.state) w* -> w* (state|component.state) w* ;
+    pub initial: bool,
+    pub state: (Rc<str>, Option<Rc<str>>),
+    pub new_state: (Rc<str>, Option<Rc<str>>),
+    pub desc: Rc<str>,
+    pub w: Rc<[usize]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StateScope {
+    FinalState(FinalState),
+    TransitionState(TransitionState),
+    ArrowState(ArrowState),
+    Transitions(Vec<TransitionScope>),
+    ErrorTokens {
+        error: Error,
+        location: Option<usize>, // report error at specific token
+        tokens: Vec<Token>,
+    },
+    LineComment(Rc<str>),
+    BlockComment(Rc<str>),
+    Whitespace,
+    Newline,
+}
