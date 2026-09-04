@@ -14,7 +14,9 @@ pub fn parse_ast(code: &str) -> Ast {
         .tokenize()
         .into_iter()
         .filter(|t| match t {
-            Token::Newline | Token::Comment(_) | Token::Unknown(_) => false,
+            Token::Newline | Token::LineComment(_) | Token::BlockComment(_) | Token::Unknown(_) => {
+                false
+            }
             _ => true,
         })
         .collect();

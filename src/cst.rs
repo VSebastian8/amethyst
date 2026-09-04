@@ -28,7 +28,8 @@ pub enum TransitionScope {
         location: Option<usize>, // report error at specific token
         tokens: Vec<Token>,
     },
-    Comment(Rc<str>),
+    LineComment(Rc<str>),
+    BlockComment(Rc<str>),
     Whitespace,
     Newline,
 }

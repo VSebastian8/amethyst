@@ -27,13 +27,14 @@ pub enum Token {
     // CST
     Whitespace,
     Newline,
-    Comment(Rc<str>),
+    LineComment(Rc<str>),
+    BlockComment(Rc<str>),
     Unknown(char),
 }
 
-impl From<Token> for Rc<str> {
-    fn from(token: Token) -> Rc<str> {
-        match token {
+impl Token {
+    pub fn debug(&self) -> Rc<str> {
+        match self {
             Token::Automaton => "keyword `automaton`",
             Token::State => "keyword `state`",
             Token::Initial => "keyword `initial`",
@@ -53,8 +54,37 @@ impl From<Token> for Rc<str> {
             Token::Ident(x, _) => return format!("identifier `{}`", x).into(),
             Token::Whitespace => "` `",
             Token::Newline => "`\\n`",
-            Token::Comment(x) => return format!("comment `{}`", x).into(),
+            Token::LineComment(x) => return format!("line comment `{}`", x).into(),
+            Token::BlockComment(x) => return format!("block comment `{}`", x).into(),
             Token::Unknown(x) => return format!("character `{}`", x).into(),
+        }
+        .into()
+    }
+
+    pub fn to_str(&self) -> Rc<str> {
+        match self {
+            Token::Automaton => "automaton",
+            Token::State => "state",
+            Token::Initial => "initial",
+            Token::Accept => "accept",
+            Token::Reject => "reject",
+            Token::As => "as",
+            Token::LParanthesis => "(",
+            Token::RParanthesis => ")",
+            Token::LBracket => "{",
+            Token::RBracket => "}",
+            Token::Slash => "/",
+            Token::Comma => ",",
+            Token::Semicolon => ";",
+            Token::Dot => ".",
+            Token::Arrow => "->",
+            Token::Symbol(ch) => return format!("{}", ch).into(),
+            Token::Ident(x, _) => x,
+            Token::Whitespace => " ",
+            Token::Newline => "\n",
+            Token::LineComment(x) => return format!("//{}", x).into(),
+            Token::BlockComment(x) => return format!("{{-{}-}}", x).into(),
+            Token::Unknown(x) => return format!("{}", x).into(),
         }
         .into()
     }
@@ -62,8 +92,7 @@ impl From<Token> for Rc<str> {
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO: avoid clone
-        let msg: Rc<str> = self.clone().into();
+        let msg: Rc<str> = self.to_str();
         write!(f, "{}", msg)
     }
 }

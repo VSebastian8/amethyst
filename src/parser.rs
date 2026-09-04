@@ -45,10 +45,10 @@ impl Parser {
             }
             Some(token) => Err(Error::Unexpected {
                 token: token.clone(),
-                expected: expected.into(),
+                expected: expected.debug(),
             }),
             None => Err(Error::EOF {
-                expected: expected.into(),
+                expected: expected.debug(),
             }),
         }
     }
@@ -207,7 +207,8 @@ impl Parser {
             Some(token) => match token {
                 Token::Whitespace => cst::TransitionScope::Whitespace,
                 Token::Newline => cst::TransitionScope::Newline,
-                Token::Comment(msg) => cst::TransitionScope::Comment(msg.clone()),
+                Token::LineComment(msg) => cst::TransitionScope::LineComment(msg.clone()),
+                Token::BlockComment(msg) => cst::TransitionScope::BlockComment(msg.clone()),
                 Token::LBracket => cst::TransitionScope::ErrorTokens {
                     error: Error::NotAllowed {
                         reason: "Nested scope in transitions".into(),

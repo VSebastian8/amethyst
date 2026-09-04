@@ -101,7 +101,7 @@ impl Lexer {
             }
         }
         self.description.push_str(&comment);
-        Token::Comment(comment.into())
+        Token::LineComment(comment.into())
     }
 
     fn read_block_comment(&mut self) -> Token {
@@ -121,7 +121,7 @@ impl Lexer {
                 comment.push(c);
             }
         }
-        Token::Comment(comment.into())
+        Token::BlockComment(comment.into())
     }
 
     fn read_word(&mut self) -> Token {
@@ -263,7 +263,7 @@ mod tests {
             vec![
                 Automaton,
                 Whitespace,
-                Comment(" This is a line comment\n".into()),
+                LineComment(" This is a line comment\n".into()),
                 Initial,
                 Whitespace,
                 State,
@@ -287,7 +287,7 @@ mod tests {
                 Ident("second_state2".into(), "".into()),
                 Semicolon,
                 Whitespace,
-                Comment(" This \n - is a - \n multiline comment ".into()),
+                BlockComment(" This \n - is a - \n multiline comment ".into()),
                 RBracket,
                 RBracket
             ]
@@ -373,9 +373,9 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Comment(" This turing machine \n".into()),
+                LineComment(" This turing machine \n".into()),
                 Whitespace,
-                Comment(" is pretty neat \n".into()),
+                LineComment(" is pretty neat \n".into()),
                 Whitespace,
                 Automaton,
                 Whitespace,
@@ -391,19 +391,19 @@ mod tests {
                 LBracket,
                 Whitespace,
                 Newline,
-                Comment("other ignored comment\n".into()),
+                LineComment("other ignored comment\n".into()),
                 Whitespace,
                 RBracket,
                 Whitespace,
-                Comment(" this \n state ".into()),
+                BlockComment(" this \n state ".into()),
                 Whitespace,
-                Comment(" is cool \n".into()),
+                LineComment(" is cool \n".into()),
                 Whitespace,
                 State,
                 Whitespace,
                 Ident("ups".into(), "this \n state  is cool".into()),
                 Whitespace,
-                Comment(" some\nthing - } ".into())
+                BlockComment(" some\nthing - } ".into())
             ]
         );
     }
