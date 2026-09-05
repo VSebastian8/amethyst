@@ -2,9 +2,7 @@ use std::rc::Rc;
 
 use crate::ast;
 use crate::cst;
-use crate::info::ErrorInfo;
-use crate::info::Info;
-use crate::info::StringInfo;
+use crate::info::*;
 use crate::token::Token;
 
 pub struct Desugarer {
@@ -114,40 +112,48 @@ impl Desugarer {
         }
     }
 
-    // Construct AST Transition and skip the relevant columns
-    fn desugar_transition(&mut self, transition: cst::Transition) -> ast::Transition {
-        // 2 sym + "/,->"
-        let parent_from: u32 = self.col + 7 + transition.w[0..6].iter().sum::<u32>();
-        let state_name = transition.state.0;
-        let parent_to = parent_from
-            + transition
-                .state
-                .1
-                .as_ref()
-                .map_or(0, |parent| parent.len() as u32);
-        let state_from = parent_to + transition.state.1.as_ref().map_or(0, |_| 1);
-        let state_to = state_from + state_name.len() as u32;
-        // parent.state | state -> (state, Option(parent))
-        let state = (
+    fn state_info(&self, state: &(Rc<str>, Option<Rc<str>>)) -> [u32; 4] {
+        let parent_from: u32 = self.col;
+        let parent_to = parent_from + state.1.as_ref().map_or(0, |parent| parent.len() as u32);
+        let state_from = parent_to + state.1.as_ref().map_or(0, |_| 1);
+        let state_to = state_from + state.0.len() as u32;
+        [parent_from, parent_to, state_from, state_to]
+    }
+
+    // parent.state | state -> (state, Option(parent))
+    fn desugar_state_name(
+        &mut self,
+        state: (Rc<str>, Option<Rc<str>>),
+    ) -> (StringInfo, Option<StringInfo>) {
+        let state_info = self.state_info(&state);
+        self.col = state_info[3];
+        (
             StringInfo {
-                name: state_name,
+                name: state.0,
                 info: Info {
                     line: self.line,
-                    from: state_from,
-                    to: state_to,
+                    from: state_info[2],
+                    to: state_info[3],
                 },
             },
-            transition.state.1.map(|parent| StringInfo {
+            state.1.map(|parent| StringInfo {
                 name: parent,
                 info: Info {
                     line: self.line,
-                    from: parent_from,
-                    to: parent_to,
+                    from: state_info[0],
+                    to: state_info[1],
                 },
             }),
-        );
+        )
+    }
+
+    // Construct AST Transition and skip the relevant columns
+    fn desugar_transition(&mut self, transition: cst::Transition) -> ast::Transition {
+        // 2 sym + "/,->"
+        self.col += 7 + transition.w[0..6].iter().sum::<u32>();
+        let state = self.desugar_state_name(transition.state);
         // Update column and return
-        self.col = state_to + transition.w[6] + 1;
+        self.col += transition.w[6] + 1;
         ast::Transition {
             read: transition.read,
             write: transition.write,
@@ -180,6 +186,163 @@ impl Desugarer {
         transitions
     }
 
+    fn desugar_final_state(&mut self, state: cst::FinalState) -> ast::State {
+        let cst::FinalState {
+            accept,
+            state,
+            desc,
+            w,
+        } = state;
+        // accept w* state w*
+        let state_from = self.col + 6 + w[0] + 5 + w[1];
+        let state_to = state_from + state.len() as u32;
+        // w* ;
+        self.col = state_to + w[2] + 1;
+        ast::State {
+            name: StringInfo {
+                name: state.clone(),
+                info: Info {
+                    line: self.line,
+                    from: state_from,
+                    to: state_to,
+                },
+            },
+            typ: if accept {
+                ast::StateType::Accept
+            } else {
+                ast::StateType::Reject
+            },
+            desc,
+        }
+    }
+
+    fn desugar_arrow_state(&mut self, state: cst::ArrowState) -> ast::State {
+        let cst::ArrowState {
+            initial,
+            state,
+            new_state,
+            desc,
+            w,
+        } = state;
+        self.col += if initial { 7 } else { 0 } + w[0] + 5 + w[1];
+        let (state_name, parent_name) = self.desugar_state_name(state);
+        self.col += w[2] + 2 + w[3];
+        let new_state = self.desugar_state_name(new_state);
+        self.col += w[4] + 1;
+        ast::State {
+            name: state_name,
+            typ: ast::StateType::State(
+                parent_name,
+                initial,
+                vec![ast::Transition {
+                    read: '_',
+                    write: '_',
+                    mov: ast::Move::N,
+                    state: new_state,
+                }],
+            ),
+            desc,
+        }
+    }
+
+    fn desugar_transition_state(&mut self, state: cst::TransitionState) -> ast::State {
+        let cst::TransitionState {
+            initial,
+            state,
+            desc,
+            w,
+        } = state;
+        self.col += if initial { 7 } else { 0 } + w[0] + 5 + w[1];
+        let (state_name, parent_name) = self.desugar_state_name(state);
+        self.col += w[2];
+        ast::State {
+            name: state_name,
+            typ: ast::StateType::State(parent_name, initial, vec![]),
+            desc,
+        }
+    }
+
+    fn clear_last_dec(
+        &mut self,
+        last_dec: &mut Option<(ast::State, Info)>,
+        states: &mut Vec<ast::State>,
+    ) {
+        if let Some((state, info)) = last_dec.take() {
+            states.push(state);
+            self.errors.push(ErrorInfo {
+                error: Error::Missing {
+                    expected: "state transitions".into(),
+                },
+                info: Some(info),
+            })
+        }
+    }
+
+    fn desugar_states(&mut self, scope: Vec<cst::StateScope>) -> Vec<ast::State> {
+        let mut states = vec![];
+        let mut last_dec: Option<(ast::State, Info)> = None; // state without transitions
+        for st in scope {
+            match st {
+                cst::StateScope::Whitespace => self.desugar_whitespace(),
+                cst::StateScope::Newline => self.desugar_newline(),
+                cst::StateScope::LineComment(comment) => self.desugar_line_comment(comment),
+                cst::StateScope::BlockComment(comment) => self.desugar_block_comment(comment),
+                cst::StateScope::ErrorTokens {
+                    error,
+                    location,
+                    tokens,
+                } => {
+                    let info = self.desugar_tokens(tokens, location);
+                    self.errors.push(ErrorInfo { error, info })
+                }
+                cst::StateScope::FinalState(state) => {
+                    self.clear_last_dec(&mut last_dec, &mut states);
+                    states.push(self.desugar_final_state(state));
+                }
+                cst::StateScope::ArrowState(state) => {
+                    self.clear_last_dec(&mut last_dec, &mut states);
+                    states.push(self.desugar_arrow_state(state));
+                }
+                cst::StateScope::TransitionState(state) => {
+                    self.clear_last_dec(&mut last_dec, &mut states);
+                    let from = self.col;
+                    last_dec = Some((
+                        self.desugar_transition_state(state),
+                        Info {
+                            line: self.line,
+                            from,
+                            to: self.col,
+                        },
+                    ));
+                }
+                cst::StateScope::Transitions(transitions) => {
+                    if let Some((mut state, _)) = last_dec.take() {
+                        match state.typ {
+                            ast::StateType::State(_, _, ref mut trs) => {
+                                *trs = self.desugar_transitions(transitions);
+                            }
+                            _ => {}
+                        }
+                        states.push(state);
+                    } else {
+                        self.errors.push(ErrorInfo {
+                            error: Error::Missing {
+                                expected: "state declaration".into(),
+                            },
+                            info: Some(Info {
+                                line: self.line,
+                                from: self.col,
+                                to: self.col + 1,
+                            }),
+                        });
+                        self.desugar_transitions(transitions);
+                    }
+                }
+            }
+        }
+        states
+    }
+
     pub fn desugar(&mut self, cst: cst::Cst) -> ast::Ast {
         todo!()
     }
@@ -190,7 +353,6 @@ mod tests {
     use super::*;
     use crate::ast;
     use crate::cst;
-    use crate::info::{Error, ErrorInfo, Info};
     use crate::token::Token::*;
 
     #[test]
@@ -325,5 +487,262 @@ mod tests {
                 })
             }]
         )
+    }
+
+    #[test]
+    fn test_desugar_final_state() {
+        let mut desugarer = Desugarer::new();
+        // accept state q0;
+        let state = desugarer.desugar_final_state(cst::FinalState {
+            accept: true,
+            state: "q0".into(),
+            desc: "none".into(),
+            w: [1, 1, 0],
+        });
+        assert_eq!(
+            state,
+            ast::State {
+                name: StringInfo {
+                    name: "q0".into(),
+                    info: Info {
+                        line: 0,
+                        from: 13,
+                        to: 15
+                    }
+                },
+                desc: "none".into(),
+                typ: ast::StateType::Accept
+            }
+        );
+    }
+
+    #[test]
+    fn test_desugar_arrow_state() {
+        let mut desugarer = Desugarer::new();
+        // state  first ->  add.second ;
+        let state = desugarer.desugar_arrow_state(cst::ArrowState {
+            initial: false,
+            state: ("first".into(), None),
+            new_state: ("second".into(), Some("add".into())),
+            desc: "".into(),
+            w: [0, 2, 1, 2, 1],
+        });
+        assert_eq!(
+            state,
+            ast::State {
+                name: StringInfo {
+                    name: "first".into(),
+                    info: Info {
+                        line: 0,
+                        from: 7,
+                        to: 12
+                    }
+                },
+                desc: "".into(),
+                typ: ast::StateType::State(
+                    None,
+                    false,
+                    vec![ast::Transition {
+                        read: '_',
+                        write: '_',
+                        mov: ast::Move::N,
+                        state: (
+                            StringInfo {
+                                name: "second".into(),
+                                info: Info {
+                                    line: 0,
+                                    from: 21,
+                                    to: 27
+                                }
+                            },
+                            Some(StringInfo {
+                                name: "add".into(),
+                                info: Info {
+                                    line: 0,
+                                    from: 17,
+                                    to: 20
+                                }
+                            })
+                        )
+                    }]
+                )
+            }
+        );
+    }
+
+    #[test]
+    fn test_desugar_states() {
+        let mut desugarer = Desugarer::new();
+        // state oops ; initial state abc ? {
+        // huh ; A / B, R -> abc; woah
+        // }
+        let scope = vec![
+            cst::StateScope::TransitionState(cst::TransitionState {
+                initial: false,
+                state: ("oops".into(), None),
+                desc: "".into(),
+                w: [0, 1, 1],
+            }),
+            cst::StateScope::ErrorTokens {
+                error: Error::Unexpected {
+                    expected: "keyword `state`".into(),
+                    token: Semicolon,
+                },
+                location: Some(0),
+                tokens: vec![Semicolon],
+            },
+            cst::StateScope::Whitespace,
+            cst::StateScope::TransitionState(cst::TransitionState {
+                initial: true,
+                state: ("abc".into(), None),
+                desc: "".into(),
+                w: [1, 1, 1],
+            }),
+            cst::StateScope::ErrorTokens {
+                error: Error::Unexpected {
+                    expected: "keyword `state`".into(),
+                    token: Unknown('?'),
+                },
+                location: Some(0),
+                tokens: vec![Unknown('?'), Whitespace],
+            },
+            cst::StateScope::Transitions(vec![
+                cst::TransitionScope::Newline,
+                cst::TransitionScope::ErrorTokens {
+                    error: Error::Unexpected {
+                        expected: "symbol".into(),
+                        token: Ident("huh".into(), "".into()),
+                    },
+                    location: Some(0),
+                    tokens: vec![Ident("huh".into(), "".into()), Whitespace, Semicolon],
+                },
+                cst::TransitionScope::Whitespace,
+                cst::TransitionScope::Transition(cst::Transition {
+                    read: 'A',
+                    write: 'B',
+                    mov: cst::Move::R,
+                    state: ("abc".into(), None),
+                    w: [1, 1, 0, 1, 1, 1, 0],
+                }),
+                cst::TransitionScope::Whitespace,
+                cst::TransitionScope::ErrorTokens {
+                    error: Error::Unexpected {
+                        expected: "symbol".into(),
+                        token: Ident("woah".into(), "".into()),
+                    },
+                    location: Some(0),
+                    tokens: vec![Ident("woah".into(), "".into()), Whitespace, Semicolon],
+                },
+                cst::TransitionScope::Newline,
+            ]),
+        ];
+        let states = desugarer.desugar_states(scope);
+        assert_eq!(
+            states,
+            vec![
+                ast::State {
+                    name: StringInfo {
+                        name: "oops".into(),
+                        info: Info {
+                            line: 0,
+                            from: 6,
+                            to: 10
+                        }
+                    },
+                    typ: ast::StateType::State(None, false, vec![]),
+                    desc: "".into()
+                },
+                ast::State {
+                    name: StringInfo {
+                        name: "abc".into(),
+                        info: Info {
+                            line: 0,
+                            from: 27,
+                            to: 30
+                        }
+                    },
+                    typ: ast::StateType::State(
+                        None,
+                        true,
+                        vec![ast::Transition {
+                            read: 'A',
+                            write: 'B',
+                            mov: ast::Move::R,
+                            state: (
+                                StringInfo {
+                                    name: "abc".into(),
+                                    info: Info {
+                                        line: 1,
+                                        from: 18,
+                                        to: 21
+                                    }
+                                },
+                                None
+                            )
+                        }]
+                    ),
+                    desc: "".into()
+                }
+            ]
+        );
+        assert_eq!(
+            desugarer.errors,
+            vec![
+                ErrorInfo {
+                    error: Error::Unexpected {
+                        expected: "keyword `state`".into(),
+                        token: Semicolon
+                    },
+                    info: Some(Info {
+                        line: 0,
+                        from: 11,
+                        to: 12
+                    })
+                },
+                ErrorInfo {
+                    error: Error::Missing {
+                        expected: "state transitions".into()
+                    },
+                    info: Some(Info {
+                        line: 0,
+                        from: 0,
+                        to: 11
+                    })
+                },
+                ErrorInfo {
+                    error: Error::Unexpected {
+                        expected: "keyword `state`".into(),
+                        token: Unknown('?')
+                    },
+                    info: Some(Info {
+                        line: 0,
+                        from: 31,
+                        to: 32
+                    })
+                },
+                ErrorInfo {
+                    error: Error::Unexpected {
+                        expected: "symbol".into(),
+                        token: Ident("huh".into(), "".into())
+                    },
+                    info: Some(Info {
+                        line: 1,
+                        from: 0,
+                        to: 3
+                    })
+                },
+                ErrorInfo {
+                    error: Error::Unexpected {
+                        expected: "symbol".into(),
+                        token: Ident("woah".into(), "".into())
+                    },
+                    info: Some(Info {
+                        line: 1,
+                        from: 23,
+                        to: 27
+                    })
+                }
+            ]
+        );
     }
 }
