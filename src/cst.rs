@@ -70,7 +70,48 @@ pub enum StateScope {
     Transitions(Vec<TransitionScope>),
     ErrorTokens {
         error: Error,
-        location: Option<usize>, // report error at specific token
+        location: Option<usize>,
+        tokens: Vec<Token>,
+    },
+    LineComment(Rc<str>),
+    BlockComment(Rc<str>),
+    Whitespace,
+    Newline,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Component {
+    // (ident) w* as w* (ident)
+    pub blueprint: Rc<str>,
+    pub alias: Rc<str>,
+    pub w: Rc<[usize]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ComponentScope {
+    Component(Component),
+    Comma,
+    ErrorTokens {
+        error: Error,
+        location: Option<usize>,
+        tokens: Vec<Token>,
+    },
+    Whitespace,
+    Newline,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AutomatonScope {
+    Automaton {
+        name: Rc<str>,
+        desc: Rc<str>,
+        w: usize,
+    },
+    Components(Vec<ComponentScope>),
+    States(Vec<StateScope>),
+    ErrorTokens {
+        error: Error,
+        location: Option<usize>,
         tokens: Vec<Token>,
     },
     LineComment(Rc<str>),

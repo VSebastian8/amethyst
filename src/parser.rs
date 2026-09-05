@@ -2,8 +2,11 @@ use std::rc::Rc;
 
 use crate::ast;
 use crate::cst;
+use crate::cst::AutomatonScope;
 use crate::info::*;
 use crate::token::Token;
+use crate::token::Token::RBracket;
+use crate::token::Token::RParanthesis;
 pub struct Parser {
     tokens: Vec<Token>,
     pub errors: Vec<Error>,
@@ -224,7 +227,17 @@ impl Parser {
         let mut transitions = Vec::new();
         loop {
             match self.peek() {
-                None | Some(&Token::RBracket) => {
+                None => {
+                    transitions.push(cst::TransitionScope::ErrorTokens {
+                        error: Error::EOF {
+                            expected: "`}`".into(),
+                        },
+                        location: None,
+                        tokens: vec![],
+                    });
+                    break;
+                }
+                Some(&Token::RBracket) => {
                     self.advance();
                     break;
                 }
@@ -357,11 +370,21 @@ impl Parser {
     }
 
     fn parse_states(&mut self) -> Vec<cst::StateScope> {
-        // Parse state transitions until }
+        // Parse automata states until }
         let mut states = Vec::new();
         loop {
             match self.peek() {
-                None | Some(&Token::RBracket) => {
+                None => {
+                    states.push(cst::StateScope::ErrorTokens {
+                        error: Error::EOF {
+                            expected: "`}`".into(),
+                        },
+                        location: None,
+                        tokens: vec![],
+                    });
+                    break;
+                }
+                Some(&Token::RBracket) => {
                     self.advance();
                     break;
                 }
@@ -373,170 +396,194 @@ impl Parser {
         states
     }
 
-    // fn parse_component(&mut self) -> Result<(StringInfo, StringInfo), Error> {
-    //     let line = self.get_line();
-    //     let path = self.parse_ident(line)?.0;
-    //     self.expect_on_line(Token::As, line)?;
-    //     let name = self.parse_ident(line)?.0;
-    //     Ok((path, name))
-    // }
+    fn parse_component(&mut self) -> Result<cst::Component, Error> {
+        let blueprint = self.parse_ident()?.0;
+        let w1 = self.parse_whitespace();
+        self.expect(Token::As)?;
+        let w2 = self.parse_whitespace();
+        let alias = self.parse_ident()?.0;
+        Ok(cst::Component {
+            blueprint,
+            alias,
+            w: [w1, w2].into(),
+        })
+    }
 
-    // fn parse_components(&mut self) -> Vec<(StringInfo, StringInfo)> {
-    //     let mut components = Vec::new();
-    //     let mut recovered = false;
-    //     loop {
-    //         match self.peek_token() {
-    //             None => break,
-    //             Some(&Token::LBracket) => {
-    //                 self.errors.push(Error::Missing {
-    //                     expected: "`)`".into(),
-    //                     info: self.get_info(),
-    //                 });
-    //                 break;
-    //             }
-    //             Some(&Token::RParanthesis) => {
-    //                 self.advance();
-    //                 break;
-    //             }
-    //             _ => {
-    //                 let sep = if components.len() > 0 && !recovered {
-    //                     self.expect(Token::Comma)
-    //                 } else {
-    //                     Ok(())
-    //                 };
-    //                 match sep.and(self.parse_component()) {
-    //                     Ok(c) => {
-    //                         recovered = false;
-    //                         components.push(c)
-    //                     }
-    //                     Err(err) => {
-    //                         self.errors.push(err);
-    //                         let line = self.get_line();
-    //                         // Error recovery
-    //                         // Advance until `,` or `)` or `{` or `\n`
-    //                         loop {
-    //                             match self.peek() {
-    //                                 None => break,
-    //                                 Some(token) if token.token == Token::Comma => {
-    //                                     self.advance();
-    //                                     recovered = true;
-    //                                     break;
-    //                                 }
-    //                                 Some(token)
-    //                                     if token.token == Token::RParanthesis
-    //                                         || token.token == Token::LBracket
-    //                                         || token.info.line != line =>
-    //                                 {
-    //                                     recovered = true;
-    //                                     break;
-    //                                 }
-    //                                 _ => {
-    //                                     self.advance();
-    //                                 }
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     components
-    // }
+    fn parse_component_scope(&mut self) -> cst::ComponentScope {
+        let start = self.pos;
+        match self.advance() {
+            None => cst::ComponentScope::ErrorTokens {
+                error: Error::EOF {
+                    expected: "`)`".into(),
+                },
+                location: None,
+                tokens: Vec::new(),
+            },
+            Some(token) => match token {
+                Token::Whitespace => cst::ComponentScope::Whitespace,
+                Token::Newline => cst::ComponentScope::Newline,
+                Token::LineComment(_) | Token::BlockComment(_) => {
+                    cst::ComponentScope::ErrorTokens {
+                        error: Error::NotAllowed {
+                            reason: "comment inside component list".into(),
+                        },
+                        location: None,
+                        tokens: vec![token.clone()],
+                    }
+                }
+                Token::Comma => cst::ComponentScope::Comma,
+                _ => {
+                    self.pos -= 1;
+                    match self.parse_component() {
+                        Ok(component) => cst::ComponentScope::Component(component),
+                        Err(error) => cst::ComponentScope::ErrorTokens {
+                            error,
+                            location: Some(self.pos - start),
+                            tokens: self.recover(
+                                start,
+                                &[Token::Comma],
+                                &[
+                                    Token::Newline,
+                                    Token::LBracket,
+                                    Token::RBracket,
+                                    Token::LParanthesis,
+                                    Token::RParanthesis,
+                                ],
+                            ),
+                        },
+                    }
+                }
+            },
+        }
+    }
 
-    pub fn parse_automaton(&mut self) -> Option<ast::Automaton> {
-        None
-        // let line = self.get_line();
+    fn parse_components(&mut self) -> Vec<cst::ComponentScope> {
+        // Parse automata components until ) / {
+        let mut components = Vec::new();
+        loop {
+            match self.peek() {
+                None => {
+                    components.push(cst::ComponentScope::ErrorTokens {
+                        error: Error::EOF {
+                            expected: "`)`".into(),
+                        },
+                        location: None,
+                        tokens: vec![],
+                    });
+                    break;
+                }
+                Some(&Token::LBracket) => {
+                    components.push(cst::ComponentScope::ErrorTokens {
+                        error: Error::Missing {
+                            expected: "`)`".into(),
+                        },
+                        location: None,
+                        tokens: vec![],
+                    });
+                    break;
+                }
+                Some(&Token::RParanthesis) => {
+                    self.advance();
+                    break;
+                }
+                _ => {
+                    components.push(self.parse_component_scope());
+                }
+            }
+        }
+        components
+    }
 
-        // let (name, desc) = match self.expect(Token::Automaton).and(self.parse_ident(line)) {
-        //     Err(err) => {
-        //         self.errors.push(err);
-        //         (None, "".into())
-        //     }
-        //     Ok((name, desc)) => (Some(name), desc),
-        // };
-        // let parse_comp = match self.expect(Token::LParanthesis) {
-        //     Ok(()) => true,
-        //     Err(err) => {
-        //         if name.is_some() {
-        //             self.errors.push(err);
-        //         }
-        //         // Error recovery until `(` or  `{`
-        //         loop {
-        //             match self.peek_token() {
-        //                 None => {
-        //                     self.errors.push(Error::EOF {
-        //                         expected: "'('".into(),
-        //                     });
-        //                     return None;
-        //                 }
-        //                 Some(Token::LParanthesis) => {
-        //                     self.advance();
-        //                     break true;
-        //                 }
-        //                 Some(Token::LBracket) => {
-        //                     break false;
-        //                 }
-        //                 _ => {
-        //                     self.advance();
-        //                 }
-        //             }
-        //         }
-        //     }
-        // };
-        // // Parse component list
-        // let components = if parse_comp {
-        //     let comps = self.parse_components();
-        //     comps
-        // } else {
-        //     Vec::new()
-        // };
-        // match self.expect(Token::LBracket) {
-        //     Ok(()) => {}
-        //     Err(err) => {
-        //         // Error recovery until `{`
-        //         self.errors.push(err);
-        //         loop {
-        //             match self.peek_token() {
-        //                 None => {
-        //                     return None;
-        //                 }
-        //                 Some(&Token::LBracket) => {
-        //                     self.advance();
-        //                     break;
-        //                 }
-        //                 _ => {
-        //                     self.advance();
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-        // // Parse state list until `}`
-        // let states = self.parse_states();
-        // match self.expect(Token::RBracket) {
-        //     Err(err) => {
-        //         self.errors.push(err);
-        //         return None;
-        //     }
-        //     Ok(()) => {}
-        // }
-        // // Return parsed automaton
-        // Some(Automaton {
-        //     name: name?,
-        //     components,
-        //     states,
-        //     desc,
-        // })
+    fn parse_automaton(&mut self) -> Result<AutomatonScope, Error> {
+        self.expect(Token::Automaton)?;
+        let w = self.parse_whitespace();
+        let (name, desc) = self.parse_ident()?;
+        Ok(cst::AutomatonScope::Automaton { name, desc, w })
+    }
+
+    fn parse_automaton_scope(&mut self) -> AutomatonScope {
+        let start = self.pos;
+        match self.advance() {
+            None => cst::AutomatonScope::ErrorTokens {
+                error: Error::EOF {
+                    expected: "automaton declaration".into(),
+                },
+                location: None,
+                tokens: Vec::new(),
+            },
+            Some(token) => match token {
+                Token::Whitespace => cst::AutomatonScope::Whitespace,
+                Token::Newline => cst::AutomatonScope::Newline,
+                Token::LineComment(x) => cst::AutomatonScope::LineComment(x.clone()),
+                Token::BlockComment(x) => cst::AutomatonScope::BlockComment(x.clone()),
+                Token::LParanthesis => cst::AutomatonScope::Components(self.parse_components()),
+                Token::LBracket => cst::AutomatonScope::States(self.parse_states()),
+                RParanthesis => cst::AutomatonScope::ErrorTokens {
+                    error: Error::Unexpected {
+                        expected: "automata declaration".into(),
+                        token: RParanthesis,
+                    },
+                    location: Some(0),
+                    tokens: vec![RParanthesis],
+                },
+                RBracket => cst::AutomatonScope::ErrorTokens {
+                    error: Error::Unexpected {
+                        expected: "automata declaration".into(),
+                        token: RBracket,
+                    },
+                    location: Some(0),
+                    tokens: vec![RBracket],
+                },
+                _ => {
+                    self.pos -= 1;
+                    match self.parse_automaton() {
+                        Ok(automaton) => automaton,
+                        Err(error) => cst::AutomatonScope::ErrorTokens {
+                            error,
+                            location: Some(self.pos - start),
+                            tokens: self.recover(
+                                start,
+                                &[],
+                                &[
+                                    Token::Newline,
+                                    Token::LBracket,
+                                    Token::RBracket,
+                                    Token::LParanthesis,
+                                    Token::RParanthesis,
+                                ],
+                            ),
+                        },
+                    }
+                }
+            },
+        }
+    }
+
+    fn parse_automata(&mut self) -> Vec<cst::AutomatonScope> {
+        // Parse automata until EOF
+        let mut automata = Vec::new();
+        loop {
+            match self.peek() {
+                None => {
+                    break;
+                }
+                _ => {
+                    automata.push(self.parse_automaton_scope());
+                }
+            }
+        }
+        automata
     }
 
     pub fn parse(mut self) -> ast::Ast {
         let mut automata = Vec::new();
         while self.pos < self.tokens.len() {
-            if let Some(automaton) = self.parse_automaton() {
-                automata.push(automaton);
-            } else {
-                break;
-            }
+            break;
+            // if let Some(automaton) = self.parse_automaton() {
+            //     automata.push(automaton);
+            // } else {
+            //     break;
+            // }
         }
         ast::Ast {
             automata,
@@ -626,6 +673,7 @@ mod tests {
             Dot,
             Ident("input".into(), "".into()),
             Semicolon,
+            RBracket,
             RBracket,
         ];
         let mut parser = Parser::new(tokens);
@@ -736,6 +784,7 @@ mod tests {
             Whitespace,
             Arrow,
             Ident("some".into(), "".into()),
+            RBracket,
         ];
         let mut parser = Parser::new(tokens);
         let scope = parser.parse_states();
@@ -759,161 +808,231 @@ mod tests {
             Ident("some".into(), "".into()),
             Arrow,
             Ident("other".into(), "".into()),
+            RBracket,
         ];
         let mut parser = Parser::new(tokens);
         let scope = parser.parse_states();
         assert_eq!(
             scope,
             vec![StateScope::ErrorTokens {
-                error: Error::EOF {
-                    expected: "`;`".into()
+                error: Error::Unexpected {
+                    expected: "`;`".into(),
+                    token: RBracket
                 },
                 location: Some(4),
-                tokens: [State, Ident("some".into(), "".into()), Arrow, Ident("other".into(), "".into())].into()
+                tokens: vec![
+                    State,
+                    Ident("some".into(), "".into()),
+                    Arrow,
+                    Ident("other".into(), "".into())
+                ]
             }]
         );
     }
 
-    //     #[test]
-    //     fn test_automaton() {
-    //         let tokens = vec![
-    //             Automaton,
-    //             Ident("main".into(), "entry\npoint".into()),
-    //             LParanthesis,
-    //             Ident("add".into(), "".into()),
-    //             As,
-    //             Ident("a1".into(), "".into()),
-    //             Comma,
-    //             Ident("other_auto".into(), "".into()),
-    //             As,
-    //             Ident("unused".into(), "".into()),
-    //             RParanthesis,
-    //             LBracket,
-    //             Initial,
-    //             State,
-    //             Ident("start".into(), "first state".into()),
-    //             LBracket,
-    //             Symbol('_'),
-    //             Slash,
-    //             Symbol('0'),
-    //             Comma,
-    //             Symbol('N'),
-    //             Arrow,
-    //             Ident("a1".into(), "".into()),
-    //             Dot,
-    //             Ident("input".into(), "".into()),
-    //             Semicolon,
-    //             RBracket,
-    //             State,
-    //             Ident("a1".into(), "final state \n of a \n component".into()),
-    //             Dot,
-    //             Ident("output".into(), "".into()),
-    //             Arrow,
-    //             Ident("done".into(), "".into()),
-    //             Semicolon,
-    //             Accept,
-    //             State,
-    //             Ident("done".into(), "".into()),
-    //             Semicolon,
-    //             RBracket,
-    //         ];
-    //         let mut parser = Parser::new(default_info(tokens));
-    //         let a = parser.parse_automaton().unwrap();
+    #[test]
+    fn test_parse_components() {
+        let tokens = vec![
+            Ident("some".into(), "".into()),
+            Whitespace,
+            As,
+            Whitespace,
+            Whitespace,
+            Ident("other".into(), "".into()),
+            Comma,
+            Newline,
+            Whitespace,
+            Ident("a".into(), "".into()),
+            Whitespace,
+            As,
+            Symbol('X'),
+            Automaton,
+            State,
+            RParanthesis,
+        ];
+        let mut parser = Parser::new(tokens);
+        let scope = parser.parse_components();
+        assert_eq!(
+            scope,
+            vec![
+                ComponentScope::Component(Component {
+                    blueprint: "some".into(),
+                    alias: "other".into(),
+                    w: [1, 2].into()
+                }),
+                ComponentScope::Comma,
+                ComponentScope::Newline,
+                ComponentScope::Whitespace,
+                ComponentScope::ErrorTokens {
+                    error: Error::Unexpected {
+                        expected: "identifier".into(),
+                        token: Symbol('X')
+                    },
+                    location: Some(3),
+                    tokens: vec![
+                        Ident("a".into(), "".into()),
+                        Whitespace,
+                        As,
+                        Symbol('X'),
+                        Automaton,
+                        State,
+                    ]
+                }
+            ]
+        )
+    }
 
-    //         assert_eq!(
-    //             a,
-    //             Automaton {
-    //                 name: StringInfo::from("main"),
-    //                 components: vec![
-    //                     (StringInfo::from("add"), StringInfo::from("a1")),
-    //                     (StringInfo::from("other_auto"), StringInfo::from("unused"))
-    //                 ],
-    //                 states: vec![
-    //                     State {
-    //                         name: StringInfo::from("start"),
-    //                         typ: StateType::State(
-    //                             None,
-    //                             true,
-    //                             vec![Transition {
-    //                                 read: '_',
-    //                                 write: '0',
-    //                                 mov: Move::N,
-    //                                 state: (StringInfo::from("input"), Some(StringInfo::from("a1")))
-    //                             }]
-    //                         ),
-    //                         desc: "first state".into()
-    //                     },
-    //                     State {
-    //                         name: StringInfo::from("output"),
-    //                         typ: StateType::State(
-    //                             Some(StringInfo::from("a1")),
-    //                             false,
-    //                             vec![Transition {
-    //                                 read: '_',
-    //                                 write: '_',
-    //                                 mov: Move::N,
-    //                                 state: (StringInfo::from("done"), None)
-    //                             }]
-    //                         ),
-    //                         desc: "final state \n of a \n component".into()
-    //                     },
-    //                     State {
-    //                         name: StringInfo::from("done"),
-    //                         typ: StateType::Accept,
-    //                         desc: "".into()
-    //                     }
-    //                 ],
-    //                 desc: "entry\npoint".into()
-    //             }
-    //         );
-    //     }
+    #[test]
+    fn test_automaton() {
+        let tokens = vec![
+            Automaton,
+            Whitespace,
+            Whitespace,
+            Ident("main".into(), "entry\npoint".into()),
+            Newline,
+            LParanthesis,
+            Ident("add".into(), "".into()),
+            As,
+            Ident("a1".into(), "".into()),
+            Comma,
+            Ident("other_auto".into(), "".into()),
+            As,
+            Ident("unused".into(), "".into()),
+            RParanthesis,
+            LBracket,
+            Initial,
+            State,
+            Ident("start".into(), "first state".into()),
+            LBracket,
+            Symbol('_'),
+            Slash,
+            Symbol('0'),
+            Comma,
+            Symbol('N'),
+            Arrow,
+            Ident("a1".into(), "".into()),
+            Dot,
+            Ident("input".into(), "".into()),
+            Semicolon,
+            RBracket,
+            State,
+            Ident("a1".into(), "final state \n of a \n component".into()),
+            Dot,
+            Ident("output".into(), "".into()),
+            Arrow,
+            Ident("done".into(), "".into()),
+            Semicolon,
+            Accept,
+            State,
+            Ident("done".into(), "".into()),
+            Semicolon,
+            RBracket,
+        ];
+        let mut parser = Parser::new(tokens);
+        let scope = parser.parse_automata();
+        assert_eq!(
+            scope,
+            vec![
+                AutomatonScope::Automaton {
+                    name: "main".into(),
+                    desc: "entry\npoint".into(),
+                    w: 2
+                },
+                AutomatonScope::Newline,
+                AutomatonScope::Components(vec![
+                    ComponentScope::Component(Component {
+                        blueprint: "add".into(),
+                        alias: "a1".into(),
+                        w: [0, 0].into()
+                    }),
+                    ComponentScope::Comma,
+                    ComponentScope::Component(Component {
+                        blueprint: "other_auto".into(),
+                        alias: "unused".into(),
+                        w: [0, 0].into()
+                    })
+                ]),
+                AutomatonScope::States(vec![
+                    StateScope::TransitionState(TransitionState {
+                        initial: true,
+                        state: ("start".into(), None),
+                        desc: "first state".into(),
+                        w: [0, 0, 0].into()
+                    }),
+                    StateScope::Transitions(vec![TransitionScope::Transition(Transition {
+                        read: '_',
+                        write: '0',
+                        mov: Move::N,
+                        state: ("input".into(), Some("a1".into())),
+                        w: [0, 0, 0, 0, 0, 0, 0].into()
+                    })]),
+                    StateScope::ArrowState(ArrowState {
+                        initial: false,
+                        state: ("output".into(), Some("a1".into())),
+                        new_state: ("done".into(), None),
+                        desc: "final state \n of a \n component".into(),
+                        w: [0, 0, 0, 0, 0].into()
+                    }),
+                    StateScope::FinalState(FinalState {
+                        accept: true,
+                        state: "done".into(),
+                        desc: "".into(),
+                        w: [0, 0, 0].into()
+                    })
+                ])
+            ]
+        );
+    }
 
-    //     #[test]
-    //     fn test_error_components() {
-    //         let tokens = default_info(vec![
-    //             Automaton,
-    //             Ident("ok".into(), "".into()),
-    //             LParanthesis,
-    //             Ident("place".into(), "".into()),
-    //             Ident("xor".into(), "".into()),
-    //             Comma,
-    //             Ident("good".into(), "".into()),
-    //             As,
-    //             Ident("dea?d".into(), "".into()),
-    //             Comma,
-    //             RParanthesis,
-    //             LBracket,
-    //             RBracket,
-    //         ]);
-    //         let mut parser = Parser::new(tokens);
-    //         let result = parser.parse_automaton();
-    //         assert!(result.is_some());
-    //         assert_eq!(
-    //             parser.errors,
-    //             vec![
-    //                 Error::Unexpected {
-    //                     token: TokenInfo {
-    //                         token: Ident("xor".into(), "".into()),
-    //                         info: Info {
-    //                             line: 0,
-    //                             from: 0,
-    //                             to: 0
-    //                         }
-    //                     },
-    //                     expected: "keyword `as`".into()
-    //                 },
-    //                 Error::Unexpected {
-    //                     token: TokenInfo {
-    //                         token: RParanthesis,
-    //                         info: Info {
-    //                             line: 0,
-    //                             from: 0,
-    //                             to: 0
-    //                         }
-    //                     },
-    //                     expected: "identifier".into()
-    //                 }
-    //             ]
-    //         );
-    //     }
+    #[test]
+    fn test_error_components() {
+        let tokens = vec![
+            Automaton,
+            Ident("ok".into(), "".into()),
+            LParanthesis,
+            Ident("place".into(), "".into()),
+            Ident("xor".into(), "".into()),
+            Comma,
+            Ident("good".into(), "".into()),
+            As,
+            Ident("dea?d".into(), "".into()),
+            Comma,
+            RParanthesis,
+            LBracket,
+            RBracket,
+        ];
+        let mut parser = Parser::new(tokens);
+        let scope = parser.parse_automata();
+        assert_eq!(
+            scope,
+            vec![
+                AutomatonScope::Automaton {
+                    name: "ok".into(),
+                    desc: "".into(),
+                    w: 0
+                },
+                AutomatonScope::Components(vec![
+                    ComponentScope::ErrorTokens {
+                        error: Error::Unexpected {
+                            expected: "keyword `as`".into(),
+                            token: Ident("xor".into(), "".into())
+                        },
+                        location: Some(1),
+                        tokens: vec![
+                            Ident("place".into(), "".into()),
+                            Ident("xor".into(), "".into()),
+                            Comma
+                        ]
+                    },
+                    ComponentScope::Component(Component {
+                        blueprint: "good".into(),
+                        alias: "dea?d".into(),
+                        w: [0, 0].into()
+                    }),
+                    ComponentScope::Comma
+                ]),
+                AutomatonScope::States(vec![])
+            ]
+        );
+    }
 }
