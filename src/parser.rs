@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use crate::ast;
 use crate::cst;
 use crate::cst::AutomatonScope;
 use crate::info::*;
@@ -73,7 +72,7 @@ impl Parser {
         tokens
     }
 
-    fn parse_whitespace(&mut self) -> usize {
+    fn parse_whitespace(&mut self) -> u32 {
         let mut w = 0;
         while Some(&Token::Whitespace) == self.peek() {
             self.advance();
@@ -559,7 +558,7 @@ impl Parser {
         }
     }
 
-    fn parse_automata(&mut self) -> Vec<cst::AutomatonScope> {
+    pub fn parse(&mut self) -> cst::Cst {
         // Parse automata until EOF
         let mut automata = Vec::new();
         loop {
@@ -573,22 +572,6 @@ impl Parser {
             }
         }
         automata
-    }
-
-    pub fn parse(mut self) -> ast::Ast {
-        let mut automata = Vec::new();
-        while self.pos < self.tokens.len() {
-            break;
-            // if let Some(automaton) = self.parse_automaton() {
-            //     automata.push(automaton);
-            // } else {
-            //     break;
-            // }
-        }
-        ast::Ast {
-            automata,
-            errors: self.errors,
-        }
     }
 }
 
@@ -929,7 +912,7 @@ mod tests {
             RBracket,
         ];
         let mut parser = Parser::new(tokens);
-        let scope = parser.parse_automata();
+        let scope = parser.parse();
         assert_eq!(
             scope,
             vec![
@@ -1002,7 +985,7 @@ mod tests {
             RBracket,
         ];
         let mut parser = Parser::new(tokens);
-        let scope = parser.parse_automata();
+        let scope = parser.parse();
         assert_eq!(
             scope,
             vec![

@@ -17,7 +17,7 @@ pub struct Transition {
     pub write: char,
     pub mov: Move,
     pub state: (Rc<str>, Option<Rc<str>>),
-    pub w: Rc<[usize]>,
+    pub w: Rc<[u32]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,7 +40,7 @@ pub struct FinalState {
     pub accept: bool,
     pub state: Rc<str>,
     pub desc: Rc<str>,
-    pub w: Rc<[usize]>,
+    pub w: Rc<[u32]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,7 +49,7 @@ pub struct TransitionState {
     pub initial: bool,
     pub state: (Rc<str>, Option<Rc<str>>),
     pub desc: Rc<str>,
-    pub w: Rc<[usize]>,
+    pub w: Rc<[u32]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,7 +59,7 @@ pub struct ArrowState {
     pub state: (Rc<str>, Option<Rc<str>>),
     pub new_state: (Rc<str>, Option<Rc<str>>),
     pub desc: Rc<str>,
-    pub w: Rc<[usize]>,
+    pub w: Rc<[u32]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,7 +84,7 @@ pub struct Component {
     // (ident) w* as w* (ident)
     pub blueprint: Rc<str>,
     pub alias: Rc<str>,
-    pub w: Rc<[usize]>,
+    pub w: Rc<[u32]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -105,7 +105,7 @@ pub enum AutomatonScope {
     Automaton {
         name: Rc<str>,
         desc: Rc<str>,
-        w: usize,
+        w: u32,
     },
     Components(Vec<ComponentScope>),
     States(Vec<StateScope>),
@@ -119,3 +119,5 @@ pub enum AutomatonScope {
     Whitespace,
     Newline,
 }
+
+pub type Cst = Vec<AutomatonScope>;

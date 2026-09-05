@@ -2,6 +2,7 @@
 // will also handle gem(import) resolution
 
 use crate::ast::Ast;
+use crate::desugar::Desugarer;
 use crate::info::{Error, ErrorInfo};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
@@ -21,8 +22,10 @@ pub fn parse_ast(code: &str) -> Ast {
         })
         .collect();
 
-    let parser = Parser::new(tokens);
-    parser.parse()
+    let mut parser = Parser::new(tokens);
+    let cst = parser.parse();
+    let mut desugarer = Desugarer::new();
+    desugarer.desugar(cst)
 }
 
 pub fn load_ast(filename: &str) -> Result<Ast, ErrorInfo> {

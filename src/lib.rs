@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod cst;
+pub mod desugar;
 pub mod fair;
 pub mod info;
 pub mod lexer;
