@@ -4,6 +4,13 @@ use crate::info::Error;
 use crate::token::Token;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ErrorTokens {
+    pub error: Error,
+    pub location: Option<usize>, // report error at specific token
+    pub tokens: Vec<Token>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Move {
     L,
     R,
@@ -22,16 +29,12 @@ pub struct Transition {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TransitionScope {
-    Transition(Transition),
-    ErrorTokens {
-        error: Error,
-        location: Option<usize>, // report error at specific token
-        tokens: Vec<Token>,
-    },
-    LineComment(Rc<str>),
-    BlockComment(Rc<str>),
     Whitespace,
     Newline,
+    LineComment(Rc<str>),
+    BlockComment(Rc<str>),
+    ErrorTokens(ErrorTokens),
+    Transition(Transition),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,19 +67,15 @@ pub struct ArrowState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateScope {
+    Whitespace,
+    Newline,
+    LineComment(Rc<str>),
+    BlockComment(Rc<str>),
+    ErrorTokens(ErrorTokens),
     FinalState(FinalState),
     TransitionState(TransitionState),
     ArrowState(ArrowState),
     Transitions(Vec<TransitionScope>),
-    ErrorTokens {
-        error: Error,
-        location: Option<usize>,
-        tokens: Vec<Token>,
-    },
-    LineComment(Rc<str>),
-    BlockComment(Rc<str>),
-    Whitespace,
-    Newline,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,19 +88,20 @@ pub struct Component {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComponentScope {
-    Component(Component),
-    Comma,
-    ErrorTokens {
-        error: Error,
-        location: Option<usize>,
-        tokens: Vec<Token>,
-    },
     Whitespace,
     Newline,
+    Comma,
+    ErrorTokens(ErrorTokens),
+    Component(Component),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AutomatonScope {
+    Whitespace,
+    Newline,
+    LineComment(Rc<str>),
+    BlockComment(Rc<str>),
+    ErrorTokens(ErrorTokens),
     Automaton {
         name: Rc<str>,
         desc: Rc<str>,
@@ -109,15 +109,6 @@ pub enum AutomatonScope {
     },
     Components(Vec<ComponentScope>),
     States(Vec<StateScope>),
-    ErrorTokens {
-        error: Error,
-        location: Option<usize>,
-        tokens: Vec<Token>,
-    },
-    LineComment(Rc<str>),
-    BlockComment(Rc<str>),
-    Whitespace,
-    Newline,
 }
 
 pub type Cst = Vec<AutomatonScope>;

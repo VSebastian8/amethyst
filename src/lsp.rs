@@ -216,11 +216,7 @@ fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentD
         ..
     } = flatten_automata(automata);
     let errors: Vec<_> = syntax_errors
-        .iter()
-        .map(|err| info::ErrorInfo {
-            error: (*err).clone(),
-            info: None,
-        })
+        .into_iter()
         .chain(logic_errors.into_iter())
         .collect();
 

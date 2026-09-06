@@ -134,15 +134,6 @@ impl Lexer {
                 self.advance();
             }
         }
-        // TODO: move to cst
-        // if word
-        //     .chars()
-        //     .any(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
-        // {
-        //     self.errors.push(Error::MalformedIdentifier {
-        //         ident: word.clone().into(),
-        //     });
-        // }
 
         match word.as_str() {
             "automaton" => Token::Automaton,
@@ -293,77 +284,6 @@ mod tests {
             ]
         );
     }
-
-    // TODO: move to cst tests
-    // #[test]
-    // fn test_invalid_character() {
-    //     let mut lexer = Lexer::new("automaton ?");
-    //     lexer.tokenize();
-
-    //     assert_eq!(
-    //         lexer.errors,
-    //         vec![Error::Unknown {
-    //             typ: "character".into(),
-    //             found: "`?`".into(),
-    //         }]
-    //     );
-    // }
-
-    // TODO: move to cst tests
-    // #[test]
-    // fn test_invalid_identifier() {
-    //     let mut lexer = Lexer::new("state camelCase");
-    //     lexer.tokenize();
-
-    //     assert_eq!(
-    //         lexer.errors,
-    //         vec![Error::MalformedIdentifier {
-    //             ident: "camelCase".into(),
-    //         }]
-    //     );
-    // }
-
-    // TODO: move to cst tests
-    // #[test]
-    // fn test_mutliple_errors() {
-    //     let mut lexer = Lexer::new("stAte \n#q0 -ups {- some\nthing - } ");
-    //     let tokens = lexer.tokenize();
-
-    //     assert_eq!(
-    //         tokens,
-    //         vec![
-    //             Ident("stAte".into(), "".into()),
-    //             Whitespace,
-    //             Newline,
-    //             Unknown('#'),
-    //             Ident("q0".into(), "".into()),
-    //             Whitespace,
-    //             Unknown('-'),
-    //             Ident("ups".into(), "".into()),
-    //             Whitespace,
-    //             Comment(" some\nthing - } ".into())
-    //         ]
-    //     );
-
-    //     assert_eq!(
-    //         lexer.errors,
-    //         vec![
-    //             Error::MalformedIdentifier { ident: "stAte" },
-    //             Error::Unknown {
-    //                 typ: "character",
-    //                 found: "`#`"
-    //             },
-    //             Error::Unknown {
-    //                 typ: "character",
-    //                 found: "`-`"
-    //             },
-    //             Error::NotTerminated {
-    //                 start: "block comment",
-    //                 end: "`-}`"
-    //             }
-    //         ]
-    //     );
-    // }
 
     #[test]
     fn test_descriptions() {

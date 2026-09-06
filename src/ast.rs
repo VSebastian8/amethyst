@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::info::Error;
+use crate::info::ErrorInfo;
 use crate::info::StringInfo;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,5 +43,5 @@ pub struct Automaton {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ast {
     pub automata: Vec<Automaton>,
-    pub errors: Vec<Error>,
+    pub errors: Vec<ErrorInfo>,
 }

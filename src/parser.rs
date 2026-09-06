@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use crate::cst;
 use crate::cst::AutomatonScope;
+use crate::cst::ErrorTokens;
 use crate::info::*;
 use crate::token::Token;
 use crate::token::Token::RBracket;
@@ -40,13 +41,22 @@ impl Parser {
     }
 
     fn expect(&mut self, expected: Token) -> Result<(), Error> {
-        match self.peek() {
-            Some(t) if *t == expected => {
-                self.advance();
-                Ok(())
-            }
+        match self.advance() {
+            Some(t) if *t == expected => Ok(()),
             Some(token) => Err(Error::Unexpected {
                 token: token.clone(),
+                expected: expected.debug(),
+            }),
+            None => Err(Error::EOF {
+                expected: expected.debug(),
+            }),
+        }
+    }
+
+    fn finalize(&mut self, expected: Token) -> Result<(), Error> {
+        match self.advance() {
+            Some(t) if *t == expected => Ok(()),
+            Some(_) => Err(Error::Missing {
                 expected: expected.debug(),
             }),
             None => Err(Error::EOF {
@@ -122,16 +132,21 @@ impl Parser {
     }
 
     fn parse_ident(&mut self) -> Result<(Rc<str>, Rc<str>), Error> {
-        match self.peek() {
+        match self.advance() {
             Some(Token::Newline) => Err(Error::Missing {
                 expected: "identifier".into(),
             }),
             Some(token) => match &token {
-                Token::Ident(name, description) => {
-                    let res = (name.clone(), description.clone());
-                    self.advance();
-                    Ok(res)
+                Token::Ident(name, _)
+                    if name.chars().any(|c: char| {
+                        !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_'
+                    }) =>
+                {
+                    Err(Error::MalformedIdentifier {
+                        ident: name.clone(),
+                    })
                 }
+                Token::Ident(name, description) => Ok((name.clone(), description.clone())),
                 _ => Err(Error::Unexpected {
                     token: token.clone(),
                     expected: "identifier".into(),
@@ -169,7 +184,7 @@ impl Parser {
         let w6 = self.parse_whitespace();
         let (state, parent, _) = self.parse_state_name()?;
         let w7 = self.parse_whitespace();
-        self.expect(Token::Semicolon)?;
+        self.finalize(Token::Semicolon)?;
 
         Ok(cst::Transition {
             read,
@@ -183,38 +198,38 @@ impl Parser {
     fn parse_transition_scope(&mut self) -> cst::TransitionScope {
         let start = self.pos;
         match self.advance() {
-            None => cst::TransitionScope::ErrorTokens {
+            None => cst::TransitionScope::ErrorTokens(ErrorTokens {
                 error: Error::EOF {
                     expected: "`}`".into(),
                 },
                 location: None,
                 tokens: Vec::new(),
-            },
+            }),
             Some(token) => match token {
                 Token::Whitespace => cst::TransitionScope::Whitespace,
                 Token::Newline => cst::TransitionScope::Newline,
                 Token::LineComment(msg) => cst::TransitionScope::LineComment(msg.clone()),
                 Token::BlockComment(msg) => cst::TransitionScope::BlockComment(msg.clone()),
-                Token::LBracket => cst::TransitionScope::ErrorTokens {
+                Token::LBracket => cst::TransitionScope::ErrorTokens(ErrorTokens {
                     error: Error::NotAllowed {
                         reason: "Nested scope in transitions".into(),
                     },
                     location: Some(0),
                     tokens: self.recover(start, &[Token::RBracket], &[]),
-                },
+                }),
                 _ => {
                     self.pos -= 1;
                     match self.parse_transition() {
                         Ok(transition) => cst::TransitionScope::Transition(transition),
-                        Err(error) => cst::TransitionScope::ErrorTokens {
+                        Err(error) => cst::TransitionScope::ErrorTokens(ErrorTokens {
                             error,
-                            location: Some(self.pos - start),
+                            location: Some(self.pos - start - 1),
                             tokens: self.recover(
                                 start,
                                 &[Token::Semicolon],
                                 &[Token::Newline, Token::LBracket, Token::RBracket],
                             ),
-                        },
+                        }),
                     }
                 }
             },
@@ -227,13 +242,13 @@ impl Parser {
         loop {
             match self.peek() {
                 None => {
-                    transitions.push(cst::TransitionScope::ErrorTokens {
+                    transitions.push(cst::TransitionScope::ErrorTokens(ErrorTokens {
                         error: Error::EOF {
                             expected: "`}`".into(),
                         },
                         location: None,
                         tokens: vec![],
-                    });
+                    }));
                     break;
                 }
                 Some(&Token::RBracket) => {
@@ -270,7 +285,7 @@ impl Parser {
         let w2 = self.parse_whitespace();
         let (state, desc) = self.parse_ident()?;
         let w3 = self.parse_whitespace();
-        self.expect(Token::Semicolon)?;
+        self.finalize(Token::Semicolon)?;
         Ok(cst::FinalState {
             accept,
             state,
@@ -300,7 +315,7 @@ impl Parser {
                 let w4 = self.parse_whitespace();
                 let (new_state, new_parent, _) = self.parse_state_name()?;
                 let w5 = self.parse_whitespace();
-                self.expect(Token::Semicolon)?;
+                self.finalize(Token::Semicolon)?;
                 Ok(cst::StateScope::ArrowState(cst::ArrowState {
                     initial,
                     state: (state, parent),
@@ -321,13 +336,13 @@ impl Parser {
     fn parse_state_scope(&mut self) -> cst::StateScope {
         let start = self.pos;
         match self.advance() {
-            None => cst::StateScope::ErrorTokens {
+            None => cst::StateScope::ErrorTokens(ErrorTokens {
                 error: Error::EOF {
                     expected: "`}`".into(),
                 },
                 location: None,
                 tokens: Vec::new(),
-            },
+            }),
             Some(token) => match token {
                 Token::Whitespace => cst::StateScope::Whitespace,
                 Token::Newline => cst::StateScope::Newline,
@@ -338,30 +353,30 @@ impl Parser {
                     self.pos -= 1;
                     match self.parse_final_state() {
                         Ok(state) => cst::StateScope::FinalState(state),
-                        Err(error) => cst::StateScope::ErrorTokens {
+                        Err(error) => cst::StateScope::ErrorTokens(ErrorTokens {
                             error,
-                            location: Some(self.pos - start),
+                            location: Some(self.pos - start - 1),
                             tokens: self.recover(
                                 start,
                                 &[Token::Semicolon],
                                 &[Token::Newline, Token::LBracket, Token::RBracket],
                             ),
-                        },
+                        }),
                     }
                 }
                 _ => {
                     self.pos -= 1;
                     match self.parse_transition_state() {
                         Ok(state) => state,
-                        Err(error) => cst::StateScope::ErrorTokens {
+                        Err(error) => cst::StateScope::ErrorTokens(ErrorTokens {
                             error,
-                            location: Some(self.pos - start),
+                            location: Some(self.pos - start - 1),
                             tokens: self.recover(
                                 start,
                                 &[Token::Semicolon],
                                 &[Token::Newline, Token::LBracket, Token::RBracket],
                             ),
-                        },
+                        }),
                     }
                 }
             },
@@ -374,13 +389,13 @@ impl Parser {
         loop {
             match self.peek() {
                 None => {
-                    states.push(cst::StateScope::ErrorTokens {
+                    states.push(cst::StateScope::ErrorTokens(ErrorTokens {
                         error: Error::EOF {
                             expected: "`}`".into(),
                         },
                         location: None,
                         tokens: vec![],
-                    });
+                    }));
                     break;
                 }
                 Some(&Token::RBracket) => {
@@ -411,33 +426,33 @@ impl Parser {
     fn parse_component_scope(&mut self) -> cst::ComponentScope {
         let start = self.pos;
         match self.advance() {
-            None => cst::ComponentScope::ErrorTokens {
+            None => cst::ComponentScope::ErrorTokens(ErrorTokens {
                 error: Error::EOF {
                     expected: "`)`".into(),
                 },
                 location: None,
                 tokens: Vec::new(),
-            },
+            }),
             Some(token) => match token {
                 Token::Whitespace => cst::ComponentScope::Whitespace,
                 Token::Newline => cst::ComponentScope::Newline,
                 Token::LineComment(_) | Token::BlockComment(_) => {
-                    cst::ComponentScope::ErrorTokens {
+                    cst::ComponentScope::ErrorTokens(ErrorTokens {
                         error: Error::NotAllowed {
                             reason: "comment inside component list".into(),
                         },
                         location: None,
                         tokens: vec![token.clone()],
-                    }
+                    })
                 }
                 Token::Comma => cst::ComponentScope::Comma,
                 _ => {
                     self.pos -= 1;
                     match self.parse_component() {
                         Ok(component) => cst::ComponentScope::Component(component),
-                        Err(error) => cst::ComponentScope::ErrorTokens {
+                        Err(error) => cst::ComponentScope::ErrorTokens(ErrorTokens {
                             error,
-                            location: Some(self.pos - start),
+                            location: Some(self.pos - start - 1),
                             tokens: self.recover(
                                 start,
                                 &[Token::Comma],
@@ -449,7 +464,7 @@ impl Parser {
                                     Token::RParanthesis,
                                 ],
                             ),
-                        },
+                        }),
                     }
                 }
             },
@@ -462,23 +477,23 @@ impl Parser {
         loop {
             match self.peek() {
                 None => {
-                    components.push(cst::ComponentScope::ErrorTokens {
+                    components.push(cst::ComponentScope::ErrorTokens(ErrorTokens {
                         error: Error::EOF {
                             expected: "`)`".into(),
                         },
                         location: None,
                         tokens: vec![],
-                    });
+                    }));
                     break;
                 }
                 Some(&Token::LBracket) => {
-                    components.push(cst::ComponentScope::ErrorTokens {
+                    components.push(cst::ComponentScope::ErrorTokens(ErrorTokens {
                         error: Error::Missing {
                             expected: "`)`".into(),
                         },
                         location: None,
                         tokens: vec![],
-                    });
+                    }));
                     break;
                 }
                 Some(&Token::RParanthesis) => {
@@ -503,13 +518,13 @@ impl Parser {
     fn parse_automaton_scope(&mut self) -> AutomatonScope {
         let start = self.pos;
         match self.advance() {
-            None => cst::AutomatonScope::ErrorTokens {
+            None => cst::AutomatonScope::ErrorTokens(ErrorTokens {
                 error: Error::EOF {
                     expected: "automaton declaration".into(),
                 },
                 location: None,
                 tokens: Vec::new(),
-            },
+            }),
             Some(token) => match token {
                 Token::Whitespace => cst::AutomatonScope::Whitespace,
                 Token::Newline => cst::AutomatonScope::Newline,
@@ -517,29 +532,29 @@ impl Parser {
                 Token::BlockComment(x) => cst::AutomatonScope::BlockComment(x.clone()),
                 Token::LParanthesis => cst::AutomatonScope::Components(self.parse_components()),
                 Token::LBracket => cst::AutomatonScope::States(self.parse_states()),
-                RParanthesis => cst::AutomatonScope::ErrorTokens {
+                RParanthesis => cst::AutomatonScope::ErrorTokens(ErrorTokens {
                     error: Error::Unexpected {
                         expected: "automata declaration".into(),
                         token: RParanthesis,
                     },
                     location: Some(0),
                     tokens: vec![RParanthesis],
-                },
-                RBracket => cst::AutomatonScope::ErrorTokens {
+                }),
+                RBracket => cst::AutomatonScope::ErrorTokens(ErrorTokens {
                     error: Error::Unexpected {
                         expected: "automata declaration".into(),
                         token: RBracket,
                     },
                     location: Some(0),
                     tokens: vec![RBracket],
-                },
+                }),
                 _ => {
                     self.pos -= 1;
                     match self.parse_automaton() {
                         Ok(automaton) => automaton,
-                        Err(error) => cst::AutomatonScope::ErrorTokens {
+                        Err(error) => cst::AutomatonScope::ErrorTokens(ErrorTokens {
                             error,
-                            location: Some(self.pos - start),
+                            location: Some(self.pos - start - 1),
                             tokens: self.recover(
                                 start,
                                 &[],
@@ -551,14 +566,14 @@ impl Parser {
                                     Token::RParanthesis,
                                 ],
                             ),
-                        },
+                        }),
                     }
                 }
             },
         }
     }
 
-    pub fn parse(&mut self) -> cst::Cst {
+    pub fn parse(mut self) -> cst::Cst {
         // Parse automata until EOF
         let mut automata = Vec::new();
         loop {
@@ -775,14 +790,14 @@ mod tests {
             scope,
             vec![
                 StateScope::Newline,
-                StateScope::ErrorTokens {
+                StateScope::ErrorTokens(ErrorTokens {
                     error: Error::Unexpected {
                         expected: "identifier".into(),
                         token: Arrow
                     },
                     location: Some(2),
                     tokens: vec![State, Whitespace, Arrow, Ident("some".into(), "".into())]
-                }
+                })
             ]
         );
 
@@ -797,10 +812,9 @@ mod tests {
         let scope = parser.parse_states();
         assert_eq!(
             scope,
-            vec![StateScope::ErrorTokens {
-                error: Error::Unexpected {
+            vec![StateScope::ErrorTokens(ErrorTokens {
+                error: Error::Missing {
                     expected: "`;`".into(),
-                    token: RBracket
                 },
                 location: Some(4),
                 tokens: vec![
@@ -809,7 +823,7 @@ mod tests {
                     Arrow,
                     Ident("other".into(), "".into())
                 ]
-            }]
+            })]
         );
     }
 
@@ -846,7 +860,7 @@ mod tests {
                 ComponentScope::Comma,
                 ComponentScope::Newline,
                 ComponentScope::Whitespace,
-                ComponentScope::ErrorTokens {
+                ComponentScope::ErrorTokens(ErrorTokens {
                     error: Error::Unexpected {
                         expected: "identifier".into(),
                         token: Symbol('X')
@@ -860,7 +874,7 @@ mod tests {
                         Automaton,
                         State,
                     ]
-                }
+                })
             ]
         )
     }
@@ -911,7 +925,7 @@ mod tests {
             Semicolon,
             RBracket,
         ];
-        let mut parser = Parser::new(tokens);
+        let parser = Parser::new(tokens);
         let scope = parser.parse();
         assert_eq!(
             scope,
@@ -984,7 +998,7 @@ mod tests {
             LBracket,
             RBracket,
         ];
-        let mut parser = Parser::new(tokens);
+        let parser = Parser::new(tokens);
         let scope = parser.parse();
         assert_eq!(
             scope,
@@ -995,7 +1009,7 @@ mod tests {
                     w: 0
                 },
                 AutomatonScope::Components(vec![
-                    ComponentScope::ErrorTokens {
+                    ComponentScope::ErrorTokens(ErrorTokens {
                         error: Error::Unexpected {
                             expected: "keyword `as`".into(),
                             token: Ident("xor".into(), "".into())
@@ -1006,13 +1020,19 @@ mod tests {
                             Ident("xor".into(), "".into()),
                             Comma
                         ]
-                    },
-                    ComponentScope::Component(Component {
-                        blueprint: "good".into(),
-                        alias: "dea?d".into(),
-                        w: [0, 0].into()
                     }),
-                    ComponentScope::Comma
+                    ComponentScope::ErrorTokens(ErrorTokens {
+                        error: Error::MalformedIdentifier {
+                            ident: "dea?d".into()
+                        },
+                        location: Some(2),
+                        tokens: vec![
+                            Ident("good".into(), "".into()),
+                            As,
+                            Ident("dea?d".into(), "".into()),
+                            Comma
+                        ]
+                    })
                 ]),
                 AutomatonScope::States(vec![])
             ]

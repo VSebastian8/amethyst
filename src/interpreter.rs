@@ -36,11 +36,7 @@ impl Interpreter {
         } = program;
         let ir = flatten_automata(automata);
         let errors: Vec<_> = syntax_errors
-            .iter()
-            .map(|err| ErrorInfo {
-                error: (*err).clone(),
-                info: None,
-            })
+            .into_iter()
             .chain(ir.errors.into_iter())
             .collect();
         if !errors.is_empty() {
@@ -74,11 +70,7 @@ impl Interpreter {
         }
         let ir = flatten_automaton(automata, automaton);
         let errors: Vec<_> = syntax_errors
-            .iter()
-            .map(|err| ErrorInfo {
-                error: (*err).clone(),
-                info: None,
-            })
+            .into_iter()
             .chain(ir.errors.into_iter())
             .collect();
         if !errors.is_empty() {

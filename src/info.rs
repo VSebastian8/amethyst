@@ -38,7 +38,7 @@ pub enum Error {
     EOF { expected: Rc<str> },
     #[error("Expected {expected}, found {}", token)]
     Unexpected { expected: Rc<str>, token: Token },
-    #[error("Missin {expected}")]
+    #[error("Missing {expected}")]
     Missing { expected: Rc<str> },
     #[error("{typ} {name} defined already")]
     Defined { typ: Rc<str>, name: Rc<str> },

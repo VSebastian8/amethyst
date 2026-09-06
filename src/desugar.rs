@@ -29,11 +29,7 @@ impl Desugarer {
         self.col = 0;
     }
 
-    fn desugar_line_comment(&mut self, comment: Rc<str>) {
-        self.col += comment.len() as u32 + 2;
-    }
-
-    fn desugar_block_comment(&mut self, comment: Rc<str>) {
+    fn desugar_comment(&mut self, comment: Rc<str>) {
         for ch in comment.chars() {
             if ch == '\n' {
                 self.desugar_newline();
@@ -46,16 +42,12 @@ impl Desugarer {
 
     fn desugar_token(&mut self, token: &Token) {
         self.col += match token {
-            Token::Newline => {
+            Token::Newline | Token::LineComment(_) => {
                 self.desugar_newline();
                 0
             }
-            Token::LineComment(comment) => {
-                self.desugar_line_comment(comment.clone());
-                0
-            }
             Token::BlockComment(comment) => {
-                self.desugar_block_comment(comment.clone());
+                self.desugar_comment(comment.clone());
                 0
             }
             Token::Whitespace
@@ -86,7 +78,7 @@ impl Desugarer {
                 None
             }
             Some(loc) => {
-                let (before, after) = tokens.as_slice().split_at(loc);
+                let (before, after) = tokens.as_slice().split_at(std::cmp::min(loc, tokens.len()));
                 for token in before {
                     self.desugar_token(token);
                 }
@@ -96,12 +88,24 @@ impl Desugarer {
                     self.desugar_token(&after[0]);
                 }
                 let to = self.col;
-                for token in &after[1..] {
-                    self.desugar_token(token);
+                if after.len() > 1 {
+                    for token in &after[1..] {
+                        self.desugar_token(token);
+                    }
                 }
                 Some(Info { line, from, to })
             }
         }
+    }
+
+    fn desugar_error(&mut self, error_tokens: cst::ErrorTokens) {
+        let cst::ErrorTokens {
+            error,
+            location,
+            tokens,
+        } = error_tokens;
+        let info = self.desugar_tokens(tokens, location);
+        self.errors.push(ErrorInfo { error, info });
     }
 
     fn desugar_move(&self, mov: cst::Move) -> ast::Move {
@@ -164,25 +168,21 @@ impl Desugarer {
 
     fn desugar_transitions(&mut self, scope: Vec<cst::TransitionScope>) -> Vec<ast::Transition> {
         let mut transitions = vec![];
+        self.col += 1; // {
         for t in scope {
             match t {
                 cst::TransitionScope::Transition(transition) => {
                     transitions.push(self.desugar_transition(transition))
                 }
                 cst::TransitionScope::Whitespace => self.desugar_whitespace(),
-                cst::TransitionScope::Newline => self.desugar_newline(),
-                cst::TransitionScope::LineComment(comment) => self.desugar_line_comment(comment),
-                cst::TransitionScope::BlockComment(comment) => self.desugar_block_comment(comment),
-                cst::TransitionScope::ErrorTokens {
-                    error,
-                    location,
-                    tokens,
-                } => {
-                    let info = self.desugar_tokens(tokens, location);
-                    self.errors.push(ErrorInfo { error, info })
+                cst::TransitionScope::Newline | cst::TransitionScope::LineComment(_) => {
+                    self.desugar_newline()
                 }
+                cst::TransitionScope::BlockComment(comment) => self.desugar_comment(comment),
+                cst::TransitionScope::ErrorTokens(err) => self.desugar_error(err),
             }
         }
+        self.col += 1; // }
         transitions
     }
 
@@ -281,20 +281,15 @@ impl Desugarer {
     fn desugar_states(&mut self, scope: Vec<cst::StateScope>) -> Vec<ast::State> {
         let mut states = vec![];
         let mut last_dec: Option<(ast::State, Info)> = None; // state without transitions
+        self.col += 1; // {
         for st in scope {
             match st {
                 cst::StateScope::Whitespace => self.desugar_whitespace(),
-                cst::StateScope::Newline => self.desugar_newline(),
-                cst::StateScope::LineComment(comment) => self.desugar_line_comment(comment),
-                cst::StateScope::BlockComment(comment) => self.desugar_block_comment(comment),
-                cst::StateScope::ErrorTokens {
-                    error,
-                    location,
-                    tokens,
-                } => {
-                    let info = self.desugar_tokens(tokens, location);
-                    self.errors.push(ErrorInfo { error, info })
+                cst::StateScope::Newline | cst::StateScope::LineComment(_) => {
+                    self.desugar_newline()
                 }
+                cst::StateScope::BlockComment(comment) => self.desugar_comment(comment),
+                cst::StateScope::ErrorTokens(err) => self.desugar_error(err),
                 cst::StateScope::FinalState(state) => {
                     self.clear_last_dec(&mut last_dec, &mut states);
                     states.push(self.desugar_final_state(state));
@@ -340,11 +335,173 @@ impl Desugarer {
                 }
             }
         }
+        self.col += 1; // }
         states
     }
 
-    pub fn desugar(&mut self, cst: cst::Cst) -> ast::Ast {
-        todo!()
+    fn desugar_component(&mut self, component: cst::Component) -> (StringInfo, StringInfo) {
+        let cst::Component {
+            blueprint,
+            alias,
+            w,
+        } = component;
+        let blueprint_from = self.col;
+        let blueprint_to = blueprint_from + blueprint.len() as u32;
+        self.col = blueprint_to + w[0] + 2 + w[1];
+        let alias_from = self.col;
+        let alias_to = alias_from + alias.len() as u32;
+        self.col = alias_to;
+        (
+            StringInfo {
+                name: blueprint,
+                info: Info {
+                    line: self.line,
+                    from: blueprint_from,
+                    to: blueprint_to,
+                },
+            },
+            StringInfo {
+                name: alias,
+                info: Info {
+                    line: self.line,
+                    from: alias_from,
+                    to: alias_to,
+                },
+            },
+        )
+    }
+
+    pub fn desugar_components(
+        &mut self,
+        scope: Vec<cst::ComponentScope>,
+    ) -> Vec<(StringInfo, StringInfo)> {
+        let mut components = vec![];
+        let mut sep = true;
+        self.col += 1; // {
+        for c in scope {
+            match c {
+                cst::ComponentScope::Whitespace => self.desugar_whitespace(),
+                cst::ComponentScope::Newline => self.desugar_newline(),
+                cst::ComponentScope::ErrorTokens(err) => self.desugar_error(err),
+                cst::ComponentScope::Comma => {
+                    if sep {
+                        self.errors.push(ErrorInfo {
+                            error: Error::Unexpected {
+                                expected: "component".into(),
+                                token: Token::Comma,
+                            },
+                            info: Some(Info {
+                                line: self.line,
+                                from: self.col,
+                                to: self.col + 1,
+                            }),
+                        })
+                    }
+                    sep = true;
+                    self.col += 1;
+                }
+                cst::ComponentScope::Component(component) => {
+                    if !sep {
+                        self.errors.push(ErrorInfo {
+                            error: Error::Missing {
+                                expected: "`,`".into(),
+                            },
+                            info: Some(Info {
+                                line: self.line,
+                                from: self.col,
+                                to: self.col + 1,
+                            }),
+                        })
+                    }
+                    sep = false;
+                    components.push(self.desugar_component(component))
+                }
+            }
+        }
+        self.col += 1; // }
+        components
+    }
+
+    pub fn desugar(mut self, cst: cst::Cst) -> ast::Ast {
+        let mut last_automaton: Option<ast::Automaton> = None;
+        let mut automata = vec![];
+        for a in cst {
+            match a {
+                cst::AutomatonScope::Whitespace => self.desugar_whitespace(),
+                cst::AutomatonScope::Newline | cst::AutomatonScope::LineComment(_) => {
+                    self.desugar_newline()
+                }
+                cst::AutomatonScope::BlockComment(comment) => self.desugar_comment(comment),
+                cst::AutomatonScope::ErrorTokens(err) => self.desugar_error(err),
+                cst::AutomatonScope::Automaton { name, desc, w } => {
+                    if let Some(automaton) = last_automaton.take() {
+                        self.errors.push(ErrorInfo {
+                            error: Error::Missing {
+                                expected: "automaton states".into(),
+                            },
+                            info: Some(automaton.name.info),
+                        });
+                    }
+                    self.col += 9 + w;
+                    let from = self.col;
+                    self.col += name.len() as u32;
+                    last_automaton = Some(ast::Automaton {
+                        name: StringInfo {
+                            name,
+                            info: Info {
+                                line: self.line,
+                                from,
+                                to: self.col,
+                            },
+                        },
+                        desc,
+                        components: vec![],
+                        states: vec![],
+                    })
+                }
+                cst::AutomatonScope::Components(components) => {
+                    if let Some(ref mut automaton) = last_automaton {
+                        automaton
+                            .components
+                            .extend(self.desugar_components(components));
+                    } else {
+                        self.errors.push(ErrorInfo {
+                            error: Error::Missing {
+                                expected: "automaton declaration".into(),
+                            },
+                            info: Some(Info {
+                                line: self.line,
+                                from: self.col,
+                                to: self.col + 1,
+                            }),
+                        });
+                        self.desugar_components(components);
+                    }
+                }
+                cst::AutomatonScope::States(states) => {
+                    if let Some(mut automaton) = last_automaton.take() {
+                        automaton.states.extend(self.desugar_states(states));
+                        automata.push(automaton);
+                    } else {
+                        self.errors.push(ErrorInfo {
+                            error: Error::Missing {
+                                expected: "automaton declaration".into(),
+                            },
+                            info: Some(Info {
+                                line: self.line,
+                                from: self.col,
+                                to: self.col + 1,
+                            }),
+                        });
+                        self.desugar_states(states);
+                    }
+                }
+            }
+        }
+        ast::Ast {
+            automata,
+            errors: self.errors,
+        }
     }
 }
 
@@ -411,7 +568,7 @@ mod tests {
                 w: [1, 1, 0, 1, 1, 1, 0].into(),
             }),
             cst::TransitionScope::Whitespace,
-            cst::TransitionScope::ErrorTokens {
+            cst::TransitionScope::ErrorTokens(cst::ErrorTokens {
                 error: Error::Unexpected {
                     expected: "symbol".into(),
                     token: Ident("oops".into(), "".into()),
@@ -426,7 +583,7 @@ mod tests {
                     Whitespace,
                     Semicolon,
                 ],
-            },
+            }),
             cst::TransitionScope::Newline,
             cst::TransitionScope::Transition(cst::Transition {
                 read: '0',
@@ -573,7 +730,7 @@ mod tests {
     #[test]
     fn test_desugar_states() {
         let mut desugarer = Desugarer::new();
-        // state oops ; initial state abc ? {
+        // {state oops ; initial state abc ? {
         // huh ; A / B, R -> abc; woah
         // }
         let scope = vec![
@@ -583,14 +740,14 @@ mod tests {
                 desc: "".into(),
                 w: [0, 1, 1],
             }),
-            cst::StateScope::ErrorTokens {
+            cst::StateScope::ErrorTokens(cst::ErrorTokens {
                 error: Error::Unexpected {
                     expected: "keyword `state`".into(),
                     token: Semicolon,
                 },
                 location: Some(0),
                 tokens: vec![Semicolon],
-            },
+            }),
             cst::StateScope::Whitespace,
             cst::StateScope::TransitionState(cst::TransitionState {
                 initial: true,
@@ -598,24 +755,24 @@ mod tests {
                 desc: "".into(),
                 w: [1, 1, 1],
             }),
-            cst::StateScope::ErrorTokens {
+            cst::StateScope::ErrorTokens(cst::ErrorTokens {
                 error: Error::Unexpected {
                     expected: "keyword `state`".into(),
                     token: Unknown('?'),
                 },
                 location: Some(0),
                 tokens: vec![Unknown('?'), Whitespace],
-            },
+            }),
             cst::StateScope::Transitions(vec![
                 cst::TransitionScope::Newline,
-                cst::TransitionScope::ErrorTokens {
+                cst::TransitionScope::ErrorTokens(cst::ErrorTokens {
                     error: Error::Unexpected {
                         expected: "symbol".into(),
                         token: Ident("huh".into(), "".into()),
                     },
                     location: Some(0),
                     tokens: vec![Ident("huh".into(), "".into()), Whitespace, Semicolon],
-                },
+                }),
                 cst::TransitionScope::Whitespace,
                 cst::TransitionScope::Transition(cst::Transition {
                     read: 'A',
@@ -625,14 +782,14 @@ mod tests {
                     w: [1, 1, 0, 1, 1, 1, 0],
                 }),
                 cst::TransitionScope::Whitespace,
-                cst::TransitionScope::ErrorTokens {
+                cst::TransitionScope::ErrorTokens(cst::ErrorTokens {
                     error: Error::Unexpected {
                         expected: "symbol".into(),
                         token: Ident("woah".into(), "".into()),
                     },
                     location: Some(0),
                     tokens: vec![Ident("woah".into(), "".into()), Whitespace, Semicolon],
-                },
+                }),
                 cst::TransitionScope::Newline,
             ]),
         ];
@@ -645,8 +802,8 @@ mod tests {
                         name: "oops".into(),
                         info: Info {
                             line: 0,
-                            from: 6,
-                            to: 10
+                            from: 7,
+                            to: 11
                         }
                     },
                     typ: ast::StateType::State(None, false, vec![]),
@@ -657,8 +814,8 @@ mod tests {
                         name: "abc".into(),
                         info: Info {
                             line: 0,
-                            from: 27,
-                            to: 30
+                            from: 28,
+                            to: 31
                         }
                     },
                     typ: ast::StateType::State(
@@ -695,8 +852,8 @@ mod tests {
                     },
                     info: Some(Info {
                         line: 0,
-                        from: 11,
-                        to: 12
+                        from: 12,
+                        to: 13
                     })
                 },
                 ErrorInfo {
@@ -705,8 +862,8 @@ mod tests {
                     },
                     info: Some(Info {
                         line: 0,
-                        from: 0,
-                        to: 11
+                        from: 1,
+                        to: 12
                     })
                 },
                 ErrorInfo {
@@ -716,8 +873,8 @@ mod tests {
                     },
                     info: Some(Info {
                         line: 0,
-                        from: 31,
-                        to: 32
+                        from: 32,
+                        to: 33
                     })
                 },
                 ErrorInfo {
@@ -744,5 +901,149 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn test_automaton_desugar() {
+        let desugarer = Desugarer::new();
+        // -- Some comment
+        // automaton main huh (x as y) what
+        // {{- First state -}
+        //   accept state ok; oops ?
+        // }
+        let cst = vec![
+            cst::AutomatonScope::LineComment(" Some comment\n".into()),
+            cst::AutomatonScope::Automaton {
+                name: "main".into(),
+                desc: " Some comment\n".into(),
+                w: 1,
+            },
+            cst::AutomatonScope::Whitespace,
+            cst::AutomatonScope::ErrorTokens(cst::ErrorTokens {
+                error: Error::Unexpected {
+                    expected: "keyword `automaton`".into(),
+                    token: Ident("huh".into(), "".into()),
+                },
+                location: Some(0),
+                tokens: vec![Ident("huh".into(), "".into()), Whitespace],
+            }),
+            cst::AutomatonScope::Components(vec![cst::ComponentScope::Component(cst::Component {
+                blueprint: "x".into(),
+                alias: "y".into(),
+                w: [1, 1],
+            })]),
+            cst::AutomatonScope::ErrorTokens(cst::ErrorTokens {
+                error: Error::Unexpected {
+                    expected: "keyword `automaton`".into(),
+                    token: Ident("what".into(), "".into()),
+                },
+                location: Some(0),
+                tokens: vec![Ident("what".into(), "".into())],
+            }),
+            cst::AutomatonScope::Newline,
+            cst::AutomatonScope::States(vec![
+                cst::StateScope::BlockComment(" First state ".into()),
+                cst::StateScope::Newline,
+                cst::StateScope::Whitespace,
+                cst::StateScope::Whitespace,
+                cst::StateScope::FinalState(cst::FinalState {
+                    accept: true,
+                    state: "ok".into(),
+                    desc: " First state ".into(),
+                    w: [1, 1, 0],
+                }),
+                cst::StateScope::ErrorTokens(cst::ErrorTokens {
+                    error: Error::Unexpected {
+                        expected: "keyword `state`".into(),
+                        token: Ident("oops".into(), "".into()),
+                    },
+                    location: Some(0),
+                    tokens: vec![Ident("oops".into(), "".into()), Whitespace, Unknown('?')],
+                }),
+                cst::StateScope::Newline,
+            ]),
+        ];
+        let ast = desugarer.desugar(cst);
+        assert_eq!(
+            ast,
+            ast::Ast {
+                automata: vec![ast::Automaton {
+                    name: StringInfo {
+                        name: "main".into(),
+                        info: Info {
+                            line: 1,
+                            from: 10,
+                            to: 14
+                        }
+                    },
+                    components: vec![(
+                        StringInfo {
+                            name: "x".into(),
+                            info: Info {
+                                line: 1,
+                                from: 20,
+                                to: 21
+                            }
+                        },
+                        StringInfo {
+                            name: "y".into(),
+                            info: Info {
+                                line: 1,
+                                from: 25,
+                                to: 26
+                            }
+                        }
+                    )],
+                    states: vec![ast::State {
+                        name: StringInfo {
+                            name: "ok".into(),
+                            info: Info {
+                                line: 3,
+                                from: 15,
+                                to: 17
+                            }
+                        },
+                        typ: ast::StateType::Accept,
+                        desc: " First state ".into()
+                    }],
+                    desc: " Some comment\n".into()
+                }],
+                errors: vec![
+                    ErrorInfo {
+                        error: Error::Unexpected {
+                            expected: "keyword `automaton`".into(),
+                            token: Ident("huh".into(), "".into())
+                        },
+                        info: Some(Info {
+                            line: 1,
+                            from: 15,
+                            to: 18
+                        })
+                    },
+                    ErrorInfo {
+                        error: Error::Unexpected {
+                            expected: "keyword `automaton`".into(),
+                            token: Ident("what".into(), "".into())
+                        },
+                        info: Some(Info {
+                            line: 1,
+                            from: 27,
+                            to: 31
+                        })
+                    },
+                    ErrorInfo {
+                        error: Error::Unexpected {
+                            expected: "keyword `state`".into(),
+                            token: Ident("oops".into(), "".into())
+                        },
+                        info: Some(Info {
+                            line: 3,
+                            from: 18,
+                            to: 22
+                        })
+                    }
+                ]
+            }
+        )
     }
 }

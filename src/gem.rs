@@ -6,25 +6,15 @@ use crate::desugar::Desugarer;
 use crate::info::{Error, ErrorInfo};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
-use crate::token::Token;
 use std::fs;
 
 pub fn parse_ast(code: &str) -> Ast {
     let mut lexer = Lexer::new(code);
-    let tokens = lexer
-        .tokenize()
-        .into_iter()
-        .filter(|t| match t {
-            Token::Newline | Token::LineComment(_) | Token::BlockComment(_) | Token::Unknown(_) => {
-                false
-            }
-            _ => true,
-        })
-        .collect();
+    let tokens = lexer.tokenize();
 
-    let mut parser = Parser::new(tokens);
+    let parser = Parser::new(tokens);
     let cst = parser.parse();
-    let mut desugarer = Desugarer::new();
+    let desugarer = Desugarer::new();
     desugarer.desugar(cst)
 }
 

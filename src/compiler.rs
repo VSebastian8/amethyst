@@ -32,11 +32,7 @@ pub fn read_and_compile(
     }
     let ir = flatten_automaton(automata, automaton.clone());
     let errors: Vec<_> = syntax_errors
-        .iter()
-        .map(|err| info::ErrorInfo {
-            error: (*err).clone(),
-            info: None,
-        })
+        .into_iter()
         .chain(ir.errors.clone().into_iter())
         .collect();
     if !errors.is_empty() {
