@@ -94,11 +94,12 @@ impl Lexer {
 
     fn read_line_comment(&mut self) -> Token {
         let mut comment = String::new();
-        while let Some(c) = self.advance() {
-            comment.push(c);
-            if c == '\n' {
+        while let Some(c) = self.chars.peek() {
+            if *c == '\n' {
                 break;
             }
+            comment.push(*c);
+            self.advance();
         }
         self.description.push_str(&comment);
         Token::LineComment(comment.into())
@@ -254,7 +255,8 @@ mod tests {
             vec![
                 Automaton,
                 Whitespace,
-                LineComment(" This is a line comment\n".into()),
+                LineComment(" This is a line comment".into()),
+                Newline,
                 Initial,
                 Whitespace,
                 State,
@@ -287,19 +289,21 @@ mod tests {
 
     #[test]
     fn test_descriptions() {
-        let mut lexer = Lexer::new("-- This turing machine \n -- is pretty neat \n automaton add(a as b) { \n--other ignored comment\n } {- this \n state -} -- is cool \n state ups {- some\nthing - } ");
+        let mut lexer = Lexer::new("-- This turing machine\n -- is pretty neat\n automaton add(a as b) { \n--other ignored comment\n } {- this \n state -} -- is cool \n state ups {- some\nthing - } ");
         let tokens = lexer.tokenize();
 
         assert_eq!(
             tokens,
             vec![
-                LineComment(" This turing machine \n".into()),
+                LineComment(" This turing machine".into()),
+                Newline,
                 Whitespace,
-                LineComment(" is pretty neat \n".into()),
+                LineComment(" is pretty neat".into()),
+                Newline,
                 Whitespace,
                 Automaton,
                 Whitespace,
-                Ident("add".into(), "This turing machine \n is pretty neat".into()),
+                Ident("add".into(), "This turing machine is pretty neat".into()),
                 LParanthesis,
                 Ident("a".into(), "".into()),
                 Whitespace,
@@ -311,13 +315,15 @@ mod tests {
                 LBracket,
                 Whitespace,
                 Newline,
-                LineComment("other ignored comment\n".into()),
+                LineComment("other ignored comment".into()),
+                Newline,
                 Whitespace,
                 RBracket,
                 Whitespace,
                 BlockComment(" this \n state ".into()),
                 Whitespace,
-                LineComment(" is cool \n".into()),
+                LineComment(" is cool ".into()),
+                Newline,
                 Whitespace,
                 State,
                 Whitespace,
