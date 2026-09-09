@@ -8,6 +8,7 @@ pub mod parser;
 pub mod token;
 
 pub mod cli;
+pub mod format;
 pub mod gem;
 pub mod interpreter;
 pub mod lsp;
