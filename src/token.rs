@@ -82,7 +82,7 @@ impl Token {
             Token::Ident(x, _) => x,
             Token::Whitespace => " ",
             Token::Newline => "\n",
-            Token::LineComment(x) => return format!("//{}", x).into(),
+            Token::LineComment(x) => return format!("--{}", x).into(),
             Token::BlockComment(x) => return format!("{{-{}-}}", x).into(),
             Token::Unknown(x) => return format!("{}", x).into(),
         }

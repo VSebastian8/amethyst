@@ -88,6 +88,7 @@ impl Serializer {
         self.wtoks(w[1]);
         self.0.push(Ident(state, desc));
         self.wtoks(w[2]);
+        self.0.push(Semicolon);
     }
 
     fn serialize_transition_state(&mut self, state: TransitionState) {
@@ -127,6 +128,7 @@ impl Serializer {
         self.wtoks(w[3]);
         self.serialize_state_name(new_state, "".into());
         self.wtoks(w[4]);
+        self.0.push(Semicolon);
     }
 
     fn serialize_states(&mut self, scope: Vec<StateScope>) {
@@ -215,15 +217,15 @@ fn format_transition(transition: Transition) -> Transition {
     }
 }
 
-fn format_transitions(transitions: Vec<TransitionScope>) -> Vec<TransitionScope> {
+fn format_transitions(transitions: &Vec<TransitionScope>) -> Vec<TransitionScope> {
     let indented = transitions
-        .into_iter()
-        .filter(|t| *t != TransitionScope::Whitespace && *t != TransitionScope::Newline)
+        .iter()
+        .filter(|t| **t != TransitionScope::Whitespace && **t != TransitionScope::Newline)
         .map(|t| match t {
             TransitionScope::Transition(transition) => {
-                TransitionScope::Transition(format_transition(transition))
+                TransitionScope::Transition(format_transition(transition.clone()))
             }
-            other => other,
+            other => other.clone(),
         })
         .flat_map(|x| {
             vec![TransitionScope::Whitespace; 8]
@@ -257,12 +259,12 @@ fn format_transition_state(state: TransitionState) -> TransitionState {
     }
 }
 
-fn format_states(scope: Vec<StateScope>) -> Vec<StateScope> {
+fn format_states(scope: &Vec<StateScope>) -> Vec<StateScope> {
     let mut states = vec![];
     let indent = vec![StateScope::Whitespace; 4];
     let mut state_dec = false;
     for st in scope {
-        if st == StateScope::Whitespace || st == StateScope::Newline {
+        if *st == StateScope::Whitespace || *st == StateScope::Newline {
             continue;
         }
         if !state_dec || !matches!(st, StateScope::Transitions(_)) {
@@ -271,14 +273,18 @@ fn format_states(scope: Vec<StateScope>) -> Vec<StateScope> {
         }
         state_dec = false;
         states.push(match st {
-            StateScope::FinalState(state) => StateScope::FinalState(format_final_state(state)),
-            StateScope::ArrowState(state) => StateScope::ArrowState(format_arrow_state(state)),
+            StateScope::FinalState(state) => {
+                StateScope::FinalState(format_final_state(state.clone()))
+            }
+            StateScope::ArrowState(state) => {
+                StateScope::ArrowState(format_arrow_state(state.clone()))
+            }
             StateScope::TransitionState(state) => {
                 state_dec = true;
-                StateScope::TransitionState(format_transition_state(state))
+                StateScope::TransitionState(format_transition_state(state.clone()))
             }
             StateScope::Transitions(scope) => StateScope::Transitions(format_transitions(scope)),
-            x => x,
+            x => x.clone(),
         })
     }
     states.push(StateScope::Newline);
@@ -292,26 +298,28 @@ fn format_component(component: Component) -> Component {
     }
 }
 
-fn format_components(scope: Vec<ComponentScope>) -> Vec<ComponentScope> {
+fn format_components(scope: &Vec<ComponentScope>) -> Vec<ComponentScope> {
     scope
         .into_iter()
-        .filter(|c| *c != ComponentScope::Whitespace && *c != ComponentScope::Newline)
+        .filter(|c| **c != ComponentScope::Whitespace && **c != ComponentScope::Newline)
         .flat_map(|c| match c {
             ComponentScope::Comma => vec![ComponentScope::Comma, ComponentScope::Whitespace],
             ComponentScope::Component(component) => {
-                vec![ComponentScope::Component(format_component(component))]
+                vec![ComponentScope::Component(format_component(
+                    component.clone(),
+                ))]
             }
-            x => vec![x],
+            x => vec![x.clone()],
         })
         .collect()
 }
 
-pub fn format(cst: Cst) -> Cst {
+pub fn format(cst: &Cst) -> Cst {
     let mut automata = vec![];
     let mut first = true;
     let mut auto_dec = false;
     for a in cst {
-        if a == AutomatonScope::Whitespace || a == AutomatonScope::Newline {
+        if a == &AutomatonScope::Whitespace || a == &AutomatonScope::Newline {
             continue;
         }
         if !auto_dec
@@ -331,13 +339,17 @@ pub fn format(cst: Cst) -> Cst {
         automata.push(match a {
             AutomatonScope::Automaton { name, desc, .. } => {
                 auto_dec = true;
-                AutomatonScope::Automaton { name, desc, w: 1 }
+                AutomatonScope::Automaton {
+                    name: name.clone(),
+                    desc: desc.clone(),
+                    w: 1,
+                }
             }
             AutomatonScope::Components(scope) => {
                 AutomatonScope::Components(format_components(scope))
             }
             AutomatonScope::States(scope) => AutomatonScope::States(format_states(scope)),
-            x => x,
+            x => x.clone(),
         })
     }
     automata
@@ -383,8 +395,8 @@ mod tests {
         assert_eq!(code, code2);
 
         let cst = Parser::new(tokens).parse();
-        let formatted = format(cst);
-        let formatted2 = format(formatted.clone());
+        let formatted = format(&cst);
+        let formatted2 = format(&formatted);
         assert_eq!(formatted, formatted2);
     }
 
@@ -403,7 +415,7 @@ automaton   main () {
 ";
         let tokens = Lexer::new(code).tokenize();
         let cst = Parser::new(tokens).parse();
-        let formatted = format(cst);
+        let formatted = format(&cst);
         let serialized = serialize(formatted);
         let code_formatted = stringify(serialized);
         assert_eq!(

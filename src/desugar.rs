@@ -29,7 +29,12 @@ impl Desugarer {
         self.col = 0;
     }
 
-    fn desugar_comment(&mut self, comment: Rc<str>) {
+    fn desugar_line_comment(&mut self, comment: &Rc<str>) {
+        self.col += 2; // --
+        self.col += comment.len() as u32;
+    }
+
+    fn desugar_block_comment(&mut self, comment: &Rc<str>) {
         for ch in comment.chars() {
             if ch == '\n' {
                 self.desugar_newline();
@@ -42,12 +47,16 @@ impl Desugarer {
 
     fn desugar_token(&mut self, token: &Token) {
         self.col += match token {
-            Token::Newline | Token::LineComment(_) => {
+            Token::Newline => {
                 self.desugar_newline();
                 0
             }
+            Token::LineComment(comment) => {
+                self.desugar_line_comment(comment);
+                0
+            }
             Token::BlockComment(comment) => {
-                self.desugar_comment(comment.clone());
+                self.desugar_block_comment(comment);
                 0
             }
             Token::Whitespace
@@ -175,10 +184,13 @@ impl Desugarer {
                     transitions.push(self.desugar_transition(transition))
                 }
                 cst::TransitionScope::Whitespace => self.desugar_whitespace(),
-                cst::TransitionScope::Newline | cst::TransitionScope::LineComment(_) => {
-                    self.desugar_newline()
+                cst::TransitionScope::Newline => {
+                    self.desugar_newline();
                 }
-                cst::TransitionScope::BlockComment(comment) => self.desugar_comment(comment),
+                cst::TransitionScope::LineComment(comment) => {
+                    self.desugar_line_comment(&comment);
+                }
+                cst::TransitionScope::BlockComment(comment) => self.desugar_block_comment(&comment),
                 cst::TransitionScope::ErrorTokens(err) => self.desugar_error(err),
             }
         }
@@ -285,10 +297,13 @@ impl Desugarer {
         for st in scope {
             match st {
                 cst::StateScope::Whitespace => self.desugar_whitespace(),
-                cst::StateScope::Newline | cst::StateScope::LineComment(_) => {
-                    self.desugar_newline()
+                cst::StateScope::Newline => {
+                    self.desugar_newline();
                 }
-                cst::StateScope::BlockComment(comment) => self.desugar_comment(comment),
+                cst::StateScope::LineComment(comment) => {
+                    self.desugar_line_comment(&comment);
+                }
+                cst::StateScope::BlockComment(comment) => self.desugar_block_comment(&comment),
                 cst::StateScope::ErrorTokens(err) => self.desugar_error(err),
                 cst::StateScope::FinalState(state) => {
                     self.clear_last_dec(&mut last_dec, &mut states);
@@ -428,10 +443,13 @@ impl Desugarer {
         for a in cst {
             match a {
                 cst::AutomatonScope::Whitespace => self.desugar_whitespace(),
-                cst::AutomatonScope::Newline | cst::AutomatonScope::LineComment(_) => {
-                    self.desugar_newline()
+                cst::AutomatonScope::Newline => {
+                    self.desugar_newline();
                 }
-                cst::AutomatonScope::BlockComment(comment) => self.desugar_comment(comment),
+                cst::AutomatonScope::LineComment(comment) => {
+                    self.desugar_line_comment(&comment);
+                }
+                cst::AutomatonScope::BlockComment(comment) => self.desugar_block_comment(&comment),
                 cst::AutomatonScope::ErrorTokens(err) => self.desugar_error(err),
                 cst::AutomatonScope::Automaton { name, desc, w } => {
                     if let Some(automaton) = last_automaton.take() {
@@ -913,6 +931,7 @@ mod tests {
         // }
         let cst = vec![
             cst::AutomatonScope::LineComment(" Some comment\n".into()),
+            cst::AutomatonScope::Newline,
             cst::AutomatonScope::Automaton {
                 name: "main".into(),
                 desc: " Some comment\n".into(),

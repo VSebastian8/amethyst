@@ -5,14 +5,16 @@
 automaton validator() {
     -- At start of input
     initial state q0 {
-        A / X, R -> q1; -- consume first A
+        A / X, R -> q1;
+        -- consume first A
         _ / _, N -> no_more_a;
     }
     -- Just consumed 1 A
     state q1 {
         A / A, R -> q1;
         Y / Y, R -> q1;
-        B / Y, R -> q2; -- consume first B
+        B / Y, R -> q2;
+        -- consume first B
         _ / _, N -> false;
     }
     state q2 {
