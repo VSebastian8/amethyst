@@ -102,6 +102,7 @@ impl Lexer {
             self.advance();
         }
         self.description.push_str(&comment);
+        self.description.push_str("\n");
         Token::LineComment(comment.into())
     }
 
@@ -111,7 +112,6 @@ impl Lexer {
             if c == '-' {
                 if let Some(c2) = self.advance() {
                     if c2 == '}' {
-                        self.description.push_str(&comment);
                         break;
                     } else {
                         comment.push(c);
@@ -122,6 +122,8 @@ impl Lexer {
                 comment.push(c);
             }
         }
+        self.description.push_str(&comment);
+        self.description.push_str("\n");
         Token::BlockComment(comment.into())
     }
 

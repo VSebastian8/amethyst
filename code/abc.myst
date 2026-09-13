@@ -1,6 +1,6 @@
 {- Validate whether input has form a^nb^nc^n
-  e.g. ..@|A|A|B|B|C|C|@.. => accept
-       ..@|A|A|A|B|C|C|@.. => reject
+- ..@|A|A|B|B|C|C|@.. => accept  
+- ..@|A|A|A|B|C|C|@.. => reject  
 -}
 automaton validator() {
     -- At start of input
@@ -9,7 +9,9 @@ automaton validator() {
         -- consume first A
         _ / _, N -> no_more_a;
     }
-    -- Just consumed 1 A
+    -- Just consumed 1 A  
+    -- **ahhhhh**  
+    {-   ok whatever -}
     state q1 {
         A / A, R -> q1;
         Y / Y, R -> q1;

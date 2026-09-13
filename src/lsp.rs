@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::error::Error;
+use std::{collections::HashMap, rc::Rc};
 
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
 use lsp_types::{
@@ -14,16 +14,96 @@ use lsp_types::{
     TextDocumentSyncKind, TextEdit, Url,
 };
 
-use crate::ast::Ast;
+use crate::ast::{Ast, Automaton, StateType};
 use crate::cst::Cst;
 use crate::desugar::Desugarer;
 use crate::fair::{flatten_automata, FAIR};
 use crate::format::{format, serialize, stringify};
 use crate::gem;
-use crate::info;
+use crate::info::*;
 
-// Store the CST of each opened file
-struct Docs(HashMap<Url, Cst>);
+// Usefull info for the lsp for efficient responses
+struct LspInfo {
+    cst: Cst,
+    errors: Vec<ErrorInfo>,
+    idents: Vec<StringInfo>,
+    descs: HashMap<Rc<str>, (Rc<str>, Rc<str>)>, // ident -> (typ, desc)
+}
+
+// Store the LSP info of each opened file
+struct Docs(HashMap<Url, LspInfo>);
+
+fn update_docs(docs: &mut Docs, uri: Url, code: String) {
+    // Gather necessary info from the myst code
+    let cst = gem::parse_cst(&code);
+    let Ast {
+        errors: syntax_errors,
+        automata,
+    } = Desugarer::new().desugar(cst.clone());
+    let idents = extract_identifiers(&automata);
+    let descs = extract_descriptions(&automata);
+    let FAIR {
+        errors: logic_errors,
+        ..
+    } = flatten_automata(automata);
+    let errors: Vec<_> = syntax_errors
+        .into_iter()
+        .chain(logic_errors.into_iter())
+        .collect();
+    // Update the info for the current uri
+    docs.0.insert(
+        uri,
+        LspInfo {
+            cst,
+            errors,
+            idents,
+            descs,
+        },
+    );
+}
+
+fn extract_identifiers(automata: &Vec<Automaton>) -> Vec<StringInfo> {
+    let mut idents = vec![];
+    for automaton in automata {
+        idents.push(automaton.name.clone());
+        for (blueprint, alias) in &automaton.components {
+            idents.push(blueprint.clone());
+            idents.push(alias.clone());
+        }
+        for state in &automaton.states {
+            idents.push(state.name.clone());
+            if let StateType::State(parent, _, transitions) = &state.typ {
+                if let Some(name) = parent {
+                    idents.push(name.clone())
+                }
+                for transition in transitions {
+                    idents.push(transition.state.0.clone());
+                    if let Some(name) = &transition.state.1 {
+                        idents.push(name.clone())
+                    }
+                }
+            }
+        }
+    }
+    idents
+}
+
+fn extract_descriptions(automata: &Vec<Automaton>) -> HashMap<Rc<str>, (Rc<str>, Rc<str>)> {
+    let mut descs = HashMap::new();
+    for automaton in automata {
+        descs.insert(
+            automaton.name.name.clone(),
+            ("automaton".into(), automaton.desc.clone()),
+        );
+        for state in &automaton.states {
+            descs.insert(
+                state.name.name.clone(),
+                ("state".into(), state.desc.clone()),
+            );
+        }
+    }
+    descs
+}
 
 pub fn run_lsp_server() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Talk LSP over stdio
@@ -140,7 +220,7 @@ fn handle_request(
     Ok(())
 }
 
-// Parse the file contents into a CST and store it
+// Update the docs with the useful info from the code
 fn handle_notification(docs: &mut Docs, not: Notification) {
     let (uri, code) = match not.method.as_str() {
         DidOpenTextDocument::METHOD => {
@@ -165,20 +245,41 @@ fn handle_notification(docs: &mut Docs, not: Notification) {
             return;
         }
     };
-    docs.0.insert(uri, gem::parse_cst(&code));
+    update_docs(docs, uri, code);
 }
 
-fn hover(_docs: &Docs, params: HoverParams) -> Option<Hover> {
+fn hover(docs: &Docs, params: HoverParams) -> Option<Hover> {
     // Hover over known states/automata and show their description
-    // TODO: ignore comments, distinguish states from different automata
-    let _uri = params.text_document_position_params.text_document.uri;
-    let _pos = params.text_document_position_params.position;
-    let word = "none";
-
+    // TODO: distinguish states from different automata
+    let uri = params.text_document_position_params.text_document.uri;
+    let lsp_info = docs.0.get(&uri)?;
+    let pos = params.text_document_position_params.position;
+    // Find identifier at position
+    let ident = lsp_info.idents.iter().find(|ident| {
+        ident.info.line == pos.line
+            && ident.info.from <= pos.character
+            && ident.info.to >= pos.character
+    })?;
+    let (typ, desc) = lsp_info
+        .descs
+        .get(&ident.name)
+        .cloned()
+        .map(|(typ, desc)| {
+            (
+                typ,
+                if desc.is_empty() {
+                    "".into()
+                } else {
+                    // Pretty markdown formatting
+                    format!("\n***\n{}", desc)
+                },
+            )
+        })
+        .unwrap_or(("".into(), "".into()));
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
-            value: format!("**{}**\n\n({} characters)", word, word.chars().count()),
+            value: format!("```amethyst\n{} {}\n```{}", typ, ident.name, desc),
         }),
         range: None,
     })
@@ -205,24 +306,12 @@ fn completion(_docs: &Docs, _params: CompletionParams) -> CompletionResponse {
 
 fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentDiagnosticReport> {
     let uri = params.text_document.uri;
-    let cst = docs.0.get(&uri)?;
-    let Ast {
-        errors: syntax_errors,
-        automata,
-    } = Desugarer::new().desugar(cst.clone());
-    let FAIR {
-        errors: logic_errors,
-        ..
-    } = flatten_automata(automata);
-    let errors: Vec<_> = syntax_errors
-        .into_iter()
-        .chain(logic_errors.into_iter())
-        .collect();
-
+    let lsp_info = docs.0.get(&uri)?;
     // Find possible errors in the .myst file
     DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
         full_document_diagnostic_report: FullDocumentDiagnosticReport {
-            items: errors
+            items: lsp_info
+                .errors
                 .iter()
                 .flat_map(|err| error_diagnostic(&err))
                 .collect(),
@@ -233,10 +322,10 @@ fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentD
     .into()
 }
 
-fn error_diagnostic(err: &info::ErrorInfo) -> Option<Diagnostic> {
+fn error_diagnostic(err: &ErrorInfo) -> Option<Diagnostic> {
     match err.info {
         None => None,
-        Some(info::Info { line, from, to }) => Some(Diagnostic {
+        Some(Info { line, from, to }) => Some(Diagnostic {
             range: Range {
                 start: Position {
                     line: line,
@@ -256,10 +345,10 @@ fn error_diagnostic(err: &info::ErrorInfo) -> Option<Diagnostic> {
 
 fn format_document(docs: &Docs, params: DocumentFormattingParams) -> Option<Vec<TextEdit>> {
     let uri = params.text_document.uri;
-    let cst = docs.0.get(&uri)?;
+    let lsp_info = docs.0.get(&uri)?;
     // Format the CST
-    let formatted_cst = format(&cst);
-    if formatted_cst == *cst {
+    let formatted_cst = format(&lsp_info.cst);
+    if formatted_cst == *lsp_info.cst {
         // No changes
         return Some(vec![]);
     }
