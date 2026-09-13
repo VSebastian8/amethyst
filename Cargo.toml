@@ -1,17 +1,17 @@
 [package]
 name = "amethyst_geode"
-version = "1.3.0"
+version = "2.0.0"
 edition = "2021"
 authors = ["VSebastian8"]
 license = "MPL-2.0"
 description = "Turing Machine Programming Language Interpreter"
 homepage = "https://github.com/VSebastian8/amethyst"
 repository = "https://github.com/VSebastian8/amethyst"
-keywords = ["cli", "programming", "language", "turing", "automata"]
-exclude = ["/extensions", "/code", "/tests", "/config"]
-# [[bin]]
-# name = "geode"
-# path = "src/bin/geode.rs"
+keywords = ["cli", "interpreter", "language", "turing", "automata"]
+exclude = ["/extensions", "/code", "/config", "/ideas", "/v1"]
+[[bin]]
+name = "geode"
+path = "src/bin/geode.rs"
 [lib]
 name = "amethyst"
 path = "src/lib.rs"

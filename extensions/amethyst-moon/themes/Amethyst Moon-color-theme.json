@@ -10,7 +10,7 @@
 		"statusBar.background": "#4C2A76",
 		"editor.selectionBackground": "#4C2A76A0",
 		"editor.selectionForeground": "#ffffffA0",
-		"editor.wordHighlightBackground":"#F3599455",
+		"editor.wordHighlightBackground": "#F3599455",
 		"gitDecoration.addedResourceForeground": "#0DBFA0",
 		"gitDecoration.conflictingResourceForeground": "#f07178",
 		"gitDecoration.deletedResourceForeground": "#F35994",
@@ -88,15 +88,13 @@
 			"scope": [
 				"keyword.operator",
 				"meta.tag",
-				
 			],
 			"settings": {
 				"foreground": "#82AAFF",
 				"fontStyle": "bold",
-
 			}
 		},
-		{ 	
+		{
 			"name": "Other Keywords",
 			"scope": [
 				"keyword.other.template",
@@ -104,11 +102,11 @@
 				"keyword.other.unit",
 				"keyword.other"
 			],
-		"settings": {
-			"foreground": "#72DDF7",
-			"fontStyle": "italic",
-
-		}},
+			"settings": {
+				"foreground": "#72DDF7",
+				"fontStyle": "italic",
+			}
+		},
 		{
 			"name": "Punctuation",
 			"scope": [
@@ -205,7 +203,7 @@
 				"constant.escape",
 				"constant.other.color",
 			],
-				"settings": {
+			"settings": {
 				"foreground": "#CD96EC"
 			}
 		},
@@ -225,7 +223,6 @@
 			],
 			"settings": {
 				"foreground": "#f07178",
-				"fontStyle": "underline",
 			}
 		},
 		{

@@ -7,7 +7,6 @@ use crate::{codegen::*, info};
 
 use std::collections::HashMap;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::rc::Rc;
 
 pub fn read_and_compile(
@@ -117,9 +116,13 @@ pub fn compile(name: Rc<str>, ir: FAIR, memory: u64, debug: bool) {
     // Write the file and mark it executable
     let out_path = name.as_ref();
     fs::write(out_path, &elf_bytes).expect("failed to write output file");
-    let mut perms = fs::metadata(out_path).unwrap().permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(out_path, perms).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(out_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(out_path, perms).unwrap();
+    }
 
     println!("Succesfully compiled ./{out_path}");
 }

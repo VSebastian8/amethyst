@@ -2,7 +2,7 @@
   "name": "amethyst-syntax",
   "displayName": "Amethyst Syntax Highlighting",
   "description": "Syntax Highlighting for Amethyst, the Turing Machine Programming Language",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.60.0"
   },

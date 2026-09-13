@@ -1,24 +1,21 @@
-## Future Ideas
-
-- Presentation website (tour and integrated runtime)
-- Macros implementation as real automata?
-- Testing framework
-- More macros (find, compare, copy, random?)
-- Support for nondeterminism (quantum-like simulation?)
-- Way to customize tape alphabet
-- Language server with standard code formatter
-- Visualizations
-- Custom macros
-
-## v2.0.0 - Planned
+## v2.3.0 - Planned
 
 - Patterns
 - Tape animation
 - Standard library
+
+## v2.2.0 - Planned
+
+- Chain syntax
+
+## v2.1.0 - Planned
+
 - Import syntax
-- Added warnings
-- More logic errors detection
-- Reworked component parser
+
+## v2.0.0
+
+- Revived project with an `error-recovery parser`, `ahead-of-time compiler`, and a `live server protocol`
+- Removed `macros` (will be replaced by `patterns`)
 
 ## v1.3.0 - 2025-07-02
 
@@ -42,3 +39,11 @@
 - `Build script` for the whole project
 - `Foreign Function Interface` for sending the syntax tree to the backend
 - `Advanced Syntax Parser` with `error logging` and `comments`
+
+## Other Ideas - Not planned
+
+- Presentation website (tour and integrated runtime)
+- Testing framework
+- Support for nondeterminism (quantum-like simulation?)
+- Way to customize tape alphabet
+- Visualizations

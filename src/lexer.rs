@@ -305,7 +305,7 @@ mod tests {
                 Whitespace,
                 Automaton,
                 Whitespace,
-                Ident("add".into(), "This turing machine is pretty neat".into()),
+                Ident("add".into(), "This turing machine\n is pretty neat".into()),
                 LParanthesis,
                 Ident("a".into(), "".into()),
                 Whitespace,
@@ -329,7 +329,7 @@ mod tests {
                 Whitespace,
                 State,
                 Whitespace,
-                Ident("ups".into(), "this \n state  is cool".into()),
+                Ident("ups".into(), "this \n state \n is cool".into()),
                 Whitespace,
                 BlockComment(" some\nthing - } ".into())
             ]
