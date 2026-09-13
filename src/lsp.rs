@@ -8,10 +8,10 @@ use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     Diagnostic, DiagnosticOptions, DiagnosticSeverity, DidChangeTextDocumentParams,
     DidOpenTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentFormattingParams, FullDocumentDiagnosticReport, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, MarkupContent, MarkupKind, OneOf, Position, Range,
-    RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Url,
+    DocumentFormattingParams, Documentation, FullDocumentDiagnosticReport, Hover, HoverContents,
+    HoverParams, HoverProviderCapability, InitializeParams, MarkupContent, MarkupKind, OneOf,
+    Position, Range, RelatedFullDocumentDiagnosticReport, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
 };
 
 use crate::ast::{Ast, Automaton, StateType};
@@ -285,23 +285,40 @@ fn hover(docs: &Docs, params: HoverParams) -> Option<Hover> {
     })
 }
 
-fn completion(_docs: &Docs, _params: CompletionParams) -> CompletionResponse {
+fn completion(docs: &Docs, params: CompletionParams) -> CompletionResponse {
     // Show keywords and current states/aliases/automata
     // TODO: context sensitive completion
-    CompletionResponse::Array(vec![
-        CompletionItem {
-            label: "automaton".into(),
-            kind: Some(CompletionItemKind::TEXT),
-            detail: Some("amethyst-lsp suggestion".into()),
-            ..Default::default()
+    let uri = params.text_document_position.text_document.uri;
+    let keywords = ["automaton", "state", "initial", "accept", "reject", "as"];
+    let lsp_info = docs.0.get(&uri);
+    let vars: Vec<_> = lsp_info.map_or(vec![], |li| li.descs.iter().collect());
+    // Agregate completion messages
+    let mut completions = vec![];
+    completions.extend(keywords.into_iter().map(|k| CompletionItem {
+        label: k.into(),
+        kind: Some(CompletionItemKind::KEYWORD),
+        ..Default::default()
+    }));
+    completions.extend(vars.into_iter().map(|(name, (typ, desc))| CompletionItem {
+        label: name.to_string(),
+        kind: Some(match typ.as_ref() {
+            "automaton" => CompletionItemKind::CLASS,
+            "state" => CompletionItemKind::VARIABLE,
+            _ => CompletionItemKind::TEXT,
+        }),
+        detail: Some(typ.to_string()),
+        documentation: if desc.is_empty() {
+            None
+        } else {
+            Some(Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: desc.to_string(),
+            }))
         },
-        CompletionItem {
-            label: "state".into(),
-            kind: Some(CompletionItemKind::TEXT),
-            detail: Some("amethyst-lsp suggestion".into()),
-            ..Default::default()
-        },
-    ])
+        ..Default::default()
+    }));
+    // Return the LSP auto-completions
+    CompletionResponse::Array(completions)
 }
 
 fn diagnostic(docs: &Docs, params: DocumentDiagnosticParams) -> Option<DocumentDiagnosticReport> {
